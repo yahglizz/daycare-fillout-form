@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Family Contact Form | A Touch of Blessings</title>
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" href="https://www.atouchofblessing.com/img-extracted-0.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=Nunito+Sans:opsz,wght@6..12,400;6..12,500;6..12,600;6..12,700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  a { color: #5B2C8E; }
+  a:hover { color: #431F6B; }
+  input::placeholder, textarea::placeholder { color: #A79FB8; }
+</style>
+</head>
+<body>
+<div style="min-height:100vh; background:linear-gradient(180deg,#F3ECFA 0%,#F7F3FB 40%,#FBF9FD 100%); font-family:'Nunito Sans',sans-serif; color:#2A2140; padding:40px 20px 64px;">
+  <div style="max-width:680px; margin:0 auto;">
+
+    <div style="display:flex; flex-direction:column; align-items:center; text-align:center; gap:14px; margin-bottom:28px;">
+      <img src="https://www.atouchofblessing.com/img-extracted-0.png" alt="A Touch of Blessings" style="height:76px; width:auto; object-fit:contain;">
+      <div>
+        <h1 style="font-family:'Poppins',sans-serif; font-weight:700; font-size:30px; line-height:1.15; margin:0; color:#3D2063; letter-spacing:-0.01em;">Family Contact Form</h1>
+        <p style="margin:8px 0 0; font-size:16px; color:#6B6480; max-width:460px;">Help us get your family set up in our system so we can send you updates, reminders, and important messages about your child.</p>
+      </div>
+    </div>
+
+    <!-- ===== THANK YOU (hidden until success) ===== -->
+    <div id="thankyou" style="display:none; background:#fff; border:1px solid #E4DCF0; border-radius:20px; box-shadow:0 14px 40px rgba(61,32,99,0.10); padding:56px 36px; text-align:center;">
+      <div style="width:76px; height:76px; border-radius:50%; background:linear-gradient(135deg,#7A3FB5,#5B2C8E); display:flex; align-items:center; justify-content:center; margin:0 auto 24px; box-shadow:0 10px 24px rgba(91,44,142,0.30);">
+        <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+      </div>
+      <h2 style="font-family:'Poppins',sans-serif; font-weight:700; font-size:28px; margin:0 0 12px; color:#3D2063; letter-spacing:-0.01em;">Thank you so much for being with us! 💜</h2>
+      <p style="margin:0 auto 8px; font-size:17px; color:#5A5175; line-height:1.6; max-width:440px;">We're so grateful your family is part of A Touch of Blessings. Your child's information has been saved to our system.</p>
+      <p style="margin:0 auto 28px; font-size:15px; color:#8A7FA6; line-height:1.6; max-width:420px;">You're all set — you can safely close this window now. If we need anything else, we'll reach out.</p>
+      <div style="display:inline-flex; align-items:center; gap:8px; background:#F6F1FC; border:1px solid #E4D8F4; border-radius:11px; padding:12px 20px; color:#5B2C8E; font-weight:600; font-size:14px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/></svg>
+        Questions? Call us at (215) 236-5439
+      </div>
+      <div style="margin-top:28px;">
+        <button type="button" id="addAnotherBtn" style="background:none; border:none; color:#8A7FA6; font-family:'Nunito Sans',sans-serif; font-size:15px; font-weight:600; cursor:pointer; text-decoration:underline;">Add another child</button>
+      </div>
+    </div>
+
+    <!-- ===== ERROR BANNER ===== -->
+    <div id="errorBox" style="display:none; background:#FDECEC; border:1px solid #F5C2C2; color:#B3261E; border-radius:12px; padding:14px 18px; margin-bottom:16px; font-size:14px; font-weight:600;"></div>
+
+    <!-- ===== FORM ===== -->
+    <form id="intakeForm" style="background:#fff; border:1px solid #E4DCF0; border-radius:20px; box-shadow:0 14px 40px rgba(61,32,99,0.10); overflow:hidden;">
+
+      <!-- honeypot: real people leave this empty -->
+      <div style="position:absolute; left:-9999px; top:-9999px;" aria-hidden="true">
+        <label>Do not fill this out<input type="text" name="company" tabindex="-1" autocomplete="off"></label>
+      </div>
+
+      <div style="background:linear-gradient(90deg,#5B2C8E,#7A3FB5); padding:18px 28px; color:#fff;">
+        <p style="margin:0; font-family:'Poppins',sans-serif; font-weight:600; font-size:14px; letter-spacing:0.02em;">A Touch of Blessings &amp; A Mother's Touch</p>
+        <p style="margin:2px 0 0; font-size:13px; color:#E8DBF7;">All fields marked * are required. Takes about 2 minutes.</p>
+      </div>
+
+      <div style="padding:28px 28px 8px;">
+
+        <!-- Section: Child -->
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:18px;">
+          <span style="width:30px; height:30px; border-radius:9px; background:#F0E7FA; display:flex; align-items:center; justify-content:center; color:#5B2C8E;">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M6 21v-2a6 6 0 0 1 12 0v2"/></svg>
+          </span>
+          <h3 style="font-family:'Poppins',sans-serif; font-weight:600; font-size:17px; margin:0; color:#3D2063;">Your Child</h3>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:8px;">
+          <label style="display:flex; flex-direction:column; gap:6px; font-size:14px; font-weight:600; color:#4A4160; grid-column:1 / -1;">
+            Child's full name *
+            <input name="studentName" required placeholder="First and last name" style="font-family:inherit; font-size:15px; color:#2A2140; padding:12px 14px; border:1.5px solid #E0D6F0; border-radius:11px; outline:none; background:#FBF9FD;">
+          </label>
+          <label style="display:flex; flex-direction:column; gap:6px; font-size:14px; font-weight:600; color:#4A4160;">
+            Date of birth
+            <input name="studentDob" type="date" style="font-family:inherit; font-size:15px; color:#2A2140; padding:12px 14px; border:1.5px solid #E0D6F0; border-radius:11px; outline:none; background:#FBF9FD;">
+          </label>
+          <label style="display:flex; flex-direction:column; gap:6px; font-size:14px; font-weight:600; color:#4A4160;">
+            Age
+            <input name="studentAge" placeholder="e.g. 3 years" style="font-family:inherit; font-size:15px; color:#2A2140; padding:12px 14px; border:1.5px solid #E0D6F0; border-radius:11px; outline:none; background:#FBF9FD;">
+          </label>
+        </div>
+
+        <div style="height:1px; background:#EEE7F7; margin:24px 0;"></div>
+
+        <!-- Section: Location -->
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+          <span style="width:30px; height:30px; border-radius:9px; background:#F0E7FA; display:flex; align-items:center; justify-content:center; color:#5B2C8E;">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+          </span>
+          <h3 style="font-family:'Poppins',sans-serif; font-weight:600; font-size:17px; margin:0; color:#3D2063;">Which location is your child at? *</h3>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <label style="display:flex; align-items:flex-start; gap:12px; padding:14px 16px; border:1.5px solid #E0D6F0; border-radius:12px; cursor:pointer; background:#FBF9FD;">
+            <input type="radio" name="location" value="atb-921" required style="margin-top:3px; width:18px; height:18px; accent-color:#5B2C8E; flex-shrink:0;">
+            <span>
+              <span style="display:block; font-weight:700; font-size:15px; color:#3D2063; font-family:'Poppins',sans-serif;">A Touch of Blessings</span>
+              <span style="display:block; font-size:13.5px; color:#6B6480; margin-top:2px;">921 N 18th St., Philadelphia, PA 19130</span>
+            </span>
+          </label>
+          <label style="display:flex; align-items:flex-start; gap:12px; padding:14px 16px; border:1.5px solid #E0D6F0; border-radius:12px; cursor:pointer; background:#FBF9FD;">
+            <input type="radio" name="location" value="atb-2318" required style="margin-top:3px; width:18px; height:18px; accent-color:#5B2C8E; flex-shrink:0;">
+            <span>
+              <span style="display:block; font-weight:700; font-size:15px; color:#3D2063; font-family:'Poppins',sans-serif;">A Touch of Blessings 2 &amp; 3</span>
+              <span style="display:block; font-size:13.5px; color:#6B6480; margin-top:2px;">2318 Cecil B. Moore Ave., Philadelphia, PA 19121</span>
+            </span>
+          </label>
+          <label style="display:flex; align-items:flex-start; gap:12px; padding:14px 16px; border:1.5px solid #E0D6F0; border-radius:12px; cursor:pointer; background:#FBF9FD;">
+            <input type="radio" name="location" value="amt-1923" required style="margin-top:3px; width:18px; height:18px; accent-color:#5B2C8E; flex-shrink:0;">
+            <span>
+              <span style="display:block; font-weight:700; font-size:15px; color:#3D2063; font-family:'Poppins',sans-serif;">A Mother's Touch Inc.</span>
+              <span style="display:block; font-size:13.5px; color:#6B6480; margin-top:2px;">1923 Cecil B. Moore Ave., Philadelphia, PA 19121</span>
+            </span>
+          </label>
+        </div>
+
+        <div style="height:1px; background:#EEE7F7; margin:24px 0;"></div>
+
+        <!-- Section: Parent -->
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+          <span style="width:30px; height:30px; border-radius:9px; background:#F0E7FA; display:flex; align-items:center; justify-content:center; color:#5B2C8E;">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </span>
+          <h3 style="font-family:'Poppins',sans-serif; font-weight:600; font-size:17px; margin:0; color:#3D2063;">Parent / Guardian</h3>
+        </div>
+        <p style="margin:0 0 16px 40px; font-size:13.5px; color:#8A7FA6;">This is where we'll send texts and updates about your child.</p>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+          <label style="display:flex; flex-direction:column; gap:6px; font-size:14px; font-weight:600; color:#4A4160; grid-column:1 / -1;">
+            Parent / guardian full name *
+            <input name="parentName" required placeholder="First and last name" style="font-family:inherit; font-size:15px; color:#2A2140; padding:12px 14px; border:1.5px solid #E0D6F0; border-radius:11px; outline:none; background:#FBF9FD;">
+          </label>
+          <label style="display:flex; flex-direction:column; gap:6px; font-size:14px; font-weight:600; color:#4A4160;">
+            Mobile phone (for texts) *
+            <input name="parentPhone" type="tel" required placeholder="(215) 555-0100" style="font-family:inherit; font-size:15px; color:#2A2140; padding:12px 14px; border:1.5px solid #E0D6F0; border-radius:11px; outline:none; background:#FBF9FD;">
+          </label>
+          <label style="display:flex; flex-direction:column; gap:6px; font-size:14px; font-weight:600; color:#4A4160;">
+            Email address *
+            <input name="parentEmail" type="email" required placeholder="you@email.com" style="font-family:inherit; font-size:15px; color:#2A2140; padding:12px 14px; border:1.5px solid #E0D6F0; border-radius:11px; outline:none; background:#FBF9FD;">
+          </label>
+          <label style="display:flex; flex-direction:column; gap:6px; font-size:14px; font-weight:600; color:#4A4160; grid-column:1 / -1;">
+            Relationship to child
+            <input name="parentRelationship" placeholder="e.g. Mother, Father, Guardian" style="font-family:inherit; font-size:15px; color:#2A2140; padding:12px 14px; border:1.5px solid #E0D6F0; border-radius:11px; outline:none; background:#FBF9FD;">
+          </label>
+        </div>
+
+        <div style="height:1px; background:#EEE7F7; margin:24px 0;"></div>
+
+        <!-- Section: Emergency -->
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+          <span style="width:30px; height:30px; border-radius:9px; background:#FBEEE2; display:flex; align-items:center; justify-content:center; color:#C6772B;">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+          </span>
+          <h3 style="font-family:'Poppins',sans-serif; font-weight:600; font-size:17px; margin:0; color:#3D2063;">Emergency Contact</h3>
+        </div>
+        <p style="margin:0 0 16px 40px; font-size:13.5px; color:#8A7FA6;">Someone other than the parent above we can reach if needed.</p>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+          <label style="display:flex; flex-direction:column; gap:6px; font-size:14px; font-weight:600; color:#4A4160;">
+            Contact name *
+            <input name="emergencyName" required placeholder="Full name" style="font-family:inherit; font-size:15px; color:#2A2140; padding:12px 14px; border:1.5px solid #E0D6F0; border-radius:11px; outline:none; background:#FBF9FD;">
+          </label>
+          <label style="display:flex; flex-direction:column; gap:6px; font-size:14px; font-weight:600; color:#4A4160;">
+            Phone number *
+            <input name="emergencyPhone" type="tel" required placeholder="(215) 555-0100" style="font-family:inherit; font-size:15px; color:#2A2140; padding:12px 14px; border:1.5px solid #E0D6F0; border-radius:11px; outline:none; background:#FBF9FD;">
+          </label>
+          <label style="display:flex; flex-direction:column; gap:6px; font-size:14px; font-weight:600; color:#4A4160; grid-column:1 / -1;">
+            Relationship to child *
+            <input name="emergencyRelationship" required placeholder="e.g. Grandparent, Aunt, Family friend" style="font-family:inherit; font-size:15px; color:#2A2140; padding:12px 14px; border:1.5px solid #E0D6F0; border-radius:11px; outline:none; background:#FBF9FD;">
+          </label>
+        </div>
+
+        <div style="height:1px; background:#EEE7F7; margin:24px 0;"></div>
+
+        <!-- Section: Other authorized people -->
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+          <span style="width:30px; height:30px; border-radius:9px; background:#F0E7FA; display:flex; align-items:center; justify-content:center; color:#5B2C8E;">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11h-6"/><path d="M19 8v6"/></svg>
+          </span>
+          <h3 style="font-family:'Poppins',sans-serif; font-weight:600; font-size:17px; margin:0; color:#3D2063;">Other Authorized People <span style="font-weight:500; color:#8A7FA6; font-size:14px;">(optional)</span></h3>
+        </div>
+        <p style="margin:0 0 16px 40px; font-size:13.5px; color:#8A7FA6;">Anyone else allowed to pick up your child or receive updates — grandparents, siblings, sitters, etc.</p>
+
+        <div id="peopleList"></div>
+
+        <button type="button" id="addPersonBtn" style="display:inline-flex; align-items:center; gap:8px; background:#F0E7FA; color:#5B2C8E; border:1.5px dashed #C4A9E6; font-family:'Poppins',sans-serif; font-weight:600; font-size:14px; padding:12px 20px; border-radius:11px; cursor:pointer;">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          Add a person
+        </button>
+
+        <div style="height:1px; background:#EEE7F7; margin:24px 0;"></div>
+
+        <label style="display:flex; flex-direction:column; gap:6px; font-size:14px; font-weight:600; color:#4A4160;">
+          Anything else we should know? (optional)
+          <textarea name="notes" rows="3" placeholder="Allergies, second guardian, pickup notes, etc." style="font-family:inherit; font-size:15px; color:#2A2140; padding:12px 14px; border:1.5px solid #E0D6F0; border-radius:11px; outline:none; background:#FBF9FD; resize:vertical;"></textarea>
+        </label>
+
+        <label style="display:flex; align-items:flex-start; gap:12px; margin-top:22px; padding:16px; background:#F6F1FC; border:1px solid #E4D8F4; border-radius:12px; cursor:pointer;">
+          <input type="checkbox" name="smsConsent" required style="margin-top:2px; width:18px; height:18px; accent-color:#5B2C8E; flex-shrink:0;">
+          <span style="font-size:13.5px; color:#5A5175; line-height:1.55;">I agree to receive text/SMS messages and updates from A Touch of Blessings about my child's care, daily updates, scheduling, and important announcements. Message &amp; data rates may apply. Reply STOP to opt out. *</span>
+        </label>
+
+      </div>
+
+      <div style="padding:8px 28px 30px;">
+        <button type="submit" id="submitBtn" style="width:100%; background:#5B2C8E; color:#fff; border:none; font-family:'Poppins',sans-serif; font-weight:700; font-size:17px; padding:16px; border-radius:13px; cursor:pointer; box-shadow:0 8px 20px rgba(91,44,142,0.30);">Submit &amp; Send to Our Team</button>
+        <p style="text-align:center; margin:14px 0 0; font-size:12.5px; color:#A79FB8;">Your information is only used to set up your family in our system.</p>
+      </div>
+    </form>
+
+    <p style="text-align:center; margin:24px 0 0; font-size:13px; color:#9C93B2;">A Touch of Blessings &amp; A Mother's Touch · North Philadelphia · (215) 236-5439</p>
+  </div>
+</div>
+
+<script>
+(function () {
+  var form = document.getElementById('intakeForm');
+  var peopleList = document.getElementById('peopleList');
+  var errorBox = document.getElementById('errorBox');
+  var submitBtn = document.getElementById('submitBtn');
+
+  function personRow() {
+    var n = peopleList.children.length + 1;
+    var wrap = document.createElement('div');
+    wrap.className = 'person-row';
+    wrap.style.cssText = 'position:relative; background:#FBF9FD; border:1.5px solid #E8DFF4; border-radius:12px; padding:16px; margin-bottom:12px;';
+    wrap.innerHTML =
+      '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">' +
+        '<span class="person-label" style="font-family:\'Poppins\',sans-serif; font-weight:600; font-size:13px; color:#7A6E96; text-transform:uppercase; letter-spacing:0.04em;">Person ' + n + '</span>' +
+        '<button type="button" class="removePerson" aria-label="Remove" style="display:inline-flex; align-items:center; gap:5px; background:none; border:none; color:#B24A6B; font-family:\'Nunito Sans\',sans-serif; font-size:13px; font-weight:600; cursor:pointer;">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Remove' +
+        '</button>' +
+      '</div>' +
+      '<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">' +
+        '<input data-field="name" placeholder="Full name" style="font-family:inherit; font-size:15px; color:#2A2140; padding:11px 13px; border:1.5px solid #E0D6F0; border-radius:10px; outline:none; background:#fff; grid-column:1 / -1;">' +
+        '<input data-field="relationship" placeholder="Relationship" style="font-family:inherit; font-size:15px; color:#2A2140; padding:11px 13px; border:1.5px solid #E0D6F0; border-radius:10px; outline:none; background:#fff;">' +
+        '<input data-field="phone" type="tel" placeholder="Phone number" style="font-family:inherit; font-size:15px; color:#2A2140; padding:11px 13px; border:1.5px solid #E0D6F0; border-radius:10px; outline:none; background:#fff;">' +
+      '</div>';
+    wrap.querySelector('.removePerson').addEventListener('click', function () {
+      wrap.remove();
+      relabel();
+    });
+    return wrap;
+  }
+
+  function relabel() {
+    var rows = peopleList.querySelectorAll('.person-row');
+    for (var i = 0; i < rows.length; i++) {
+      rows[i].querySelector('.person-label').textContent = 'Person ' + (i + 1);
+    }
+  }
+
+  document.getElementById('addPersonBtn').addEventListener('click', function () {
+    peopleList.appendChild(personRow());
+  });
+
+  function collectPeople() {
+    var out = [];
+    var rows = peopleList.querySelectorAll('.person-row');
+    for (var i = 0; i < rows.length; i++) {
+      var name = (rows[i].querySelector('[data-field=name]').value || '').trim();
+      var relationship = (rows[i].querySelector('[data-field=relationship]').value || '').trim();
+      var phone = (rows[i].querySelector('[data-field=phone]').value || '').trim();
+      if (name || relationship || phone) out.push({ name: name, relationship: relationship, phone: phone });
+    }
+    return out;
+  }
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    errorBox.style.display = 'none';
+    if (!form.reportValidity()) return;
+
+    var fd = new FormData(form);
+    var payload = {
+      studentName: (fd.get('studentName') || '').trim(),
+      studentDob: (fd.get('studentDob') || '').trim(),
+      studentAge: (fd.get('studentAge') || '').trim(),
+      location: fd.get('location') || '',
+      parentName: (fd.get('parentName') || '').trim(),
+      parentPhone: (fd.get('parentPhone') || '').trim(),
+      parentEmail: (fd.get('parentEmail') || '').trim(),
+      parentRelationship: (fd.get('parentRelationship') || '').trim(),
+      emergencyName: (fd.get('emergencyName') || '').trim(),
+      emergencyPhone: (fd.get('emergencyPhone') || '').trim(),
+      emergencyRelationship: (fd.get('emergencyRelationship') || '').trim(),
+      notes: (fd.get('notes') || '').trim(),
+      smsConsent: fd.get('smsConsent') ? 'yes' : 'no',
+      company: fd.get('company') || '',
+      people: collectPeople()
+    };
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving…';
+
+    fetch('/api/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(function (r) {
+      if (!r.ok) return r.text().then(function (t) { throw new Error(t || 'Something went wrong.'); });
+      form.style.display = 'none';
+      document.getElementById('thankyou').style.display = 'block';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }).catch(function (err) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Submit & Send to Our Team';
+      errorBox.textContent = (err && err.message) ? err.message : 'Unable to save right now. Please call (215) 236-5439 or try again in a moment.';
+      errorBox.style.display = 'block';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  });
+
+  document.getElementById('addAnotherBtn').addEventListener('click', function () {
+    form.reset();
+    peopleList.innerHTML = '';
+    document.getElementById('thankyou').style.display = 'none';
+    form.style.display = 'block';
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Submit & Send to Our Team';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+})();
+</script>
+</body>
+</html>
