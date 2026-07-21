@@ -161,7 +161,11 @@ module.exports = async function handler(req, res) {
   const firstName = parts[0] || String(b.studentName || '');
   const lastName = parts.slice(1).join(' ');
 
-  const tags = ['existing-student', 'enrolled', 'family-contact-form', loc.tag];
+  // form-type tag is the explicit, self-describing marker: this form is filled out
+  // by families ALREADY at one of the centers, updating their info into the system —
+  // never a brand-new inquiry. (New inquiries only ever come from the marketing
+  // site's Website Enrollment Form, tagged form-type-new-inquiry in enroll.js.)
+  const tags = ['existing-student', 'enrolled', 'family-contact-form', 'form-type-existing-family', loc.tag];
   if (classroom && GROUP_TAG[classroom]) tags.push(GROUP_TAG[classroom]);
 
   const customFields = [
