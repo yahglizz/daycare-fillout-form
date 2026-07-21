@@ -18,6 +18,7 @@ const F = {
   classroom: 'TSMLTeehtQL262xkLBCS',
   enrollStatus: 'd7sKOSmyfbxmXnuIOtNr',
   smsConsent: 'pOKARrXbbuf9dF9MduiC',
+  parentName: '68zgbWrCHH0e9OIyuRJx',
 };
 
 const LOCATIONS = {
@@ -154,8 +155,10 @@ module.exports = async function handler(req, res) {
   const locLabel = loc.address ? `${loc.name} — ${loc.address}` : loc.name;
   const classroom = deriveClassroom(b.studentAge, b.studentDob);
 
-  const parts = String(b.parentName || '').trim().split(/\s+/);
-  const firstName = parts[0] || String(b.parentName || '');
+  // Contact identity is the CHILD's name (staff look records up by kid name, not
+  // parent name); the parent's name is preserved in its own custom field below.
+  const parts = String(b.studentName || '').trim().split(/\s+/);
+  const firstName = parts[0] || String(b.studentName || '');
   const lastName = parts.slice(1).join(' ');
 
   const tags = ['existing-student', 'enrolled', 'family-contact-form', loc.tag];
@@ -163,6 +166,7 @@ module.exports = async function handler(req, res) {
 
   const customFields = [
     { id: F.childName, value: b.studentName },
+    { id: F.parentName, value: b.parentName },
     { id: F.preferredLocation, value: locLabel },
     { id: F.enrollStatus, value: 'Enrolled' },
     { id: F.emergencyName, value: b.emergencyName },
@@ -177,7 +181,7 @@ module.exports = async function handler(req, res) {
 
   const upsert = await ghl('/contacts/upsert', 'POST', token, {
     locationId,
-    name: b.parentName,
+    name: b.studentName,
     firstName,
     lastName,
     email: b.parentEmail,
