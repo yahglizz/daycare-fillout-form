@@ -19,7 +19,41 @@ const F = {
   enrollStatus: 'd7sKOSmyfbxmXnuIOtNr',
   smsConsent: 'pOKARrXbbuf9dF9MduiC',
   parentName: '68zgbWrCHH0e9OIyuRJx',
+  // Ad attribution, same four fields the enrollment form writes so both funnels
+  // report through one set of columns.
+  adCampaign: 'ZsP48g59eB7Hl9vKhbAA',
+  adSource: 'Rakc5bf2JKGxzKnJVOpQ',
+  adContent: 'IOPkNcVg3LmGhgGiTxBt',
+  adClickId: 'TzYC7B2KtKIub5t8VidE',
 };
+
+// Where the family came from, as one filterable tag. Mirrors website/api/enroll.js
+// deliberately: an ad pointed at this form should report the same way an ad
+// pointed at the enrollment form does.
+//   source-meta-ad     paid Facebook / Instagram click
+//   source-google-ad   paid Google click
+//   source-campaign    any other tagged link — an organic post, an email, a partner
+//   source-organic     no attribution at all — someone sent them the link
+function sourceTag(adSource, adClickId) {
+  const s = String(adSource || '').toLowerCase();
+  if (!s) return 'source-organic';
+  const paid = /paid|cpc|ppc/.test(s) || !!adClickId;
+  if (/facebook|instagram|meta/.test(s)) return paid ? 'source-meta-ad' : 'source-campaign';
+  if (/google/.test(s)) return paid ? 'source-google-ad' : 'source-campaign';
+  return 'source-campaign';
+}
+
+// The upsert response names custom field values `fieldValue` on create and
+// `value` on update. Reading only one loses first touch on a resubmit.
+function mergedField(contact, id) {
+  const f = (contact?.customFields || []).find((x) => x.id === id);
+  return f?.value ?? f?.fieldValue ?? '';
+}
+
+function parseAttr(raw) {
+  if (!raw) return null;
+  try { return typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return null; }
+}
 
 const LOCATIONS = {
   'atb-921': { name: 'A Touch of Blessings', address: '921 N 18th St., Philadelphia, PA 19130', tag: 'loc-921-n-18th' },
@@ -183,6 +217,18 @@ module.exports = async function handler(req, res) {
   if (classroom) customFields.push({ id: F.classroom, value: classroom });
   if (b.smsConsent === 'yes') customFields.push({ id: F.smsConsent, value: new Date().toISOString().slice(0, 10) });
 
+  // Durable ad attribution, written the same way the enrollment form writes it.
+  const a = parseAttr(b.attr) || {};
+  const adSource = [a.utm_source, a.utm_medium].filter(Boolean).join(' / ') ||
+    (a.fbclid ? 'facebook / paid' : a.gclid ? 'google / paid' : '');
+  const adContent = [a.utm_content, a.utm_term].filter(Boolean).join(' | ');
+  for (const [id, value] of [
+    [F.adCampaign, a.utm_campaign],
+    [F.adSource, adSource],
+    [F.adContent, adContent],
+    [F.adClickId, a.fbclid || a.gclid],
+  ]) if (value) customFields.push({ id, value });
+
   const upsert = await ghl('/contacts/upsert', 'POST', token, {
     locationId,
     name: b.studentName,
@@ -201,6 +247,24 @@ module.exports = async function handler(req, res) {
   }
 
   const contactId = upsert.data && upsert.data.contact && upsert.data.contact.id;
+
+  // Source tag, applied AFTER the upsert and derived from the MERGED fields on
+  // its response. /contacts/upsert replaces the tags array but merges
+  // customFields, so a tag written on an earlier submission is already gone while
+  // the ad fields still hold first touch. Deriving it from the merged fields is
+  // what stops a family who first arrived from an ad being downgraded to
+  // source-organic when they update their details later. POST /tags adds without
+  // replacing, so it leaves the tags above alone.
+  if (contactId) {
+    const tag = sourceTag(
+      mergedField(upsert.data.contact, F.adSource),
+      mergedField(upsert.data.contact, F.adClickId),
+    );
+    const st = await ghl(`/contacts/${contactId}/tags`, 'POST', token, { tags: [tag] });
+    // Not fatal — the family's record is already saved; only the reporting tag is missing.
+    if (!st.ok) console.error('GHL source tag failed', st.status, JSON.stringify(st.data));
+    else console.log(`[source] ${contactId} tagged ${tag}`);
+  }
 
   // Note with the full intake (best-effort — never blocks success).
   if (contactId) {

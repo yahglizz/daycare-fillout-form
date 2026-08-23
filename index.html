@@ -287,7 +287,26 @@
       notes: (fd.get('notes') || '').trim(),
       smsConsent: fd.get('smsConsent') ? 'yes' : 'no',
       company: fd.get('company') || '',
-      people: collectPeople()
+      people: collectPeople(),
+      // Ad attribution. This form has no landing-page hop, so first touch is
+      // whatever UTMs / click ids are on THIS url, plus the Meta cookies if the
+      // visitor has them. api/submit.js turns it into one source-* tag so an ad
+      // pointed at this form can be told apart from a parent who was just sent
+      // the link.
+      attr: (function () {
+        var a = {};
+        try {
+          var qs = new URLSearchParams(location.search);
+          ['utm_source','utm_medium','utm_campaign','utm_content','utm_term','fbclid','gclid'].forEach(function (n) {
+            var v = qs.get(n); if (v) { a[n] = v; }
+          });
+        } catch (e) { /* best effort — never block a family from submitting */ }
+        function ck(n){var m=document.cookie.match('(^|; )'+n+'=([^;]*)');return m?decodeURIComponent(m[2]):'';}
+        a._fbp = ck('_fbp'); a._fbc = ck('_fbc');
+        a.landing = location.origin + location.pathname;
+        a.referrer = document.referrer || '';
+        return JSON.stringify(a);
+      })()
     };
 
     submitBtn.disabled = true;
