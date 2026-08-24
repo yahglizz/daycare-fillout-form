@@ -135,8 +135,90 @@ async function ghl(path, method, token, payload) {
   return { ok: resp.ok, status: resp.status, data };
 }
 
+// Same visual system as the enrollment notification in website/api/enroll.js —
+// purple gradient header, gold eyebrow, ruled label/value rows, gold-bordered
+// notes block. These two emails land in the same inbox, and having one arrive as
+// a designed card and the other as raw text made the family form look like the
+// afterthought it is not.
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function intakeHtml(b, locLabel, brandName) {
+  const submittedAt = new Date().toLocaleString('en-US', {
+    timeZone: 'America/New_York', dateStyle: 'full', timeStyle: 'short',
+  });
+  const row = (label, value) => `
+    <tr>
+      <td style="padding:10px 0;font-weight:600;width:42%;color:#1B1230;border-bottom:1px solid #EDE4F5;">${escapeHtml(label)}</td>
+      <td style="padding:10px 0;color:#4A4458;border-bottom:1px solid #EDE4F5;">${value}</td>
+    </tr>`;
+  const heading = (text) => `
+    <div style="margin:26px 0 4px;font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#5B2C8E;">${escapeHtml(text)}</div>`;
+
+  const people = Array.isArray(b.people) ? b.people : [];
+  const peopleRows = people.map((p, i) => row(
+    `Person ${i + 1}`,
+    `${escapeHtml(p.name || '—')}${p.relationship ? ` <span style="color:#7D7592;">(${escapeHtml(p.relationship)})</span>` : ''}${p.phone ? ` &middot; ${escapeHtml(p.phone)}` : ''}`,
+  )).join('');
+
+  return `
+<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background:#F6F0FB;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F6F0FB;padding:32px 16px;">
+      <tr><td align="center">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#FFFFFF;border-radius:16px;overflow:hidden;box-shadow:0 8px 24px rgba(91,44,142,0.12);">
+          <tr><td style="background:linear-gradient(135deg,#5B2C8E 0%,#7B4DAE 100%);padding:32px 32px 28px;">
+            <div style="font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#DBAB3A;margin-bottom:8px;">Existing Family</div>
+            <h1 style="margin:0;font-family:Georgia,serif;font-size:26px;color:#FFFFFF;line-height:1.2;">Family Contact Form</h1>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,0.8);font-size:13px;">${escapeHtml(brandName)}</p>
+          </td></tr>
+          <tr><td style="padding:28px 32px;">
+            ${heading('Child')}
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;">
+              ${row('Name', escapeHtml(b.studentName))}
+              ${row('Date of Birth', escapeHtml(b.studentDob || '—'))}
+              ${row('Age', escapeHtml(b.studentAge || '—'))}
+              ${row('Location', escapeHtml(locLabel))}
+            </table>
+            ${heading('Parent / Guardian')}
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;">
+              ${row('Name', escapeHtml(b.parentName))}
+              ${row('Mobile (SMS)', `<a href="tel:${escapeHtml(b.parentPhone)}" style="color:#5B2C8E;text-decoration:none;">${escapeHtml(b.parentPhone)}</a>`)}
+              ${row('Email', `<a href="mailto:${escapeHtml(b.parentEmail)}" style="color:#5B2C8E;text-decoration:none;">${escapeHtml(b.parentEmail)}</a>`)}
+              ${row('Relationship', escapeHtml(b.parentRelationship || '—'))}
+              ${row('SMS Consent', b.smsConsent === 'yes' ? 'Yes' : 'No')}
+            </table>
+            ${heading('Emergency Contact')}
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;">
+              ${row('Name', escapeHtml(b.emergencyName))}
+              ${row('Phone', `<a href="tel:${escapeHtml(b.emergencyPhone)}" style="color:#5B2C8E;text-decoration:none;">${escapeHtml(b.emergencyPhone)}</a>`)}
+              ${row('Relationship', escapeHtml(b.emergencyRelationship))}
+            </table>
+            ${peopleRows ? heading('Other Authorized People') + `
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;">${peopleRows}</table>` : ''}
+            ${b.notes ? `
+              <div style="margin-top:24px;padding:16px 18px;background:#FFFAF2;border-left:3px solid #C9962B;border-radius:6px;">
+                <div style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#A67C1F;margin-bottom:6px;">Additional Notes</div>
+                <div style="color:#4A4458;font-size:14px;line-height:1.6;white-space:pre-wrap;">${escapeHtml(b.notes)}</div>
+              </div>` : ''}
+            <div style="margin-top:28px;padding-top:20px;border-top:1px solid #EDE4F5;text-align:center;color:#7D7592;font-size:12px;">
+              Submitted ${escapeHtml(submittedAt)} ET<br>
+              Reply directly to this email to contact ${escapeHtml(b.parentName)}.
+            </div>
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>`;
+}
+
 // Optional email notification (OFF unless RESEND_API_KEY + NOTIFY_EMAIL are set).
-async function notifyEmail(b, locLabel) {
+async function notifyEmail(b, locLabel, brandName) {
   const key = process.env.RESEND_API_KEY;
   const to = process.env.NOTIFY_EMAIL; // comma-separated ok
   if (!key || !to) return;
@@ -149,7 +231,9 @@ async function notifyEmail(b, locLabel) {
         from,
         to: to.split(',').map((s) => s.trim()).filter(Boolean),
         reply_to: b.parentEmail,
-        subject: `Student Intake — ${b.studentName} (${locLabel})`,
+        subject: `Family Contact Form — ${b.studentName} (${locLabel})`,
+        html: intakeHtml(b, locLabel, brandName || 'A Touch of Blessings'),
+        // Plain-text alternative kept: some clients and every screen reader use it.
         text: summaryText(b, locLabel),
       }),
     });
@@ -272,7 +356,7 @@ module.exports = async function handler(req, res) {
     if (!note.ok) console.error('GHL note failed', note.status, JSON.stringify(note.data));
   }
 
-  await notifyEmail(b, locLabel);
+  await notifyEmail(b, locLabel, loc.name);
 
   return res.status(200).json({ ok: true, contactId: contactId || null });
 };
