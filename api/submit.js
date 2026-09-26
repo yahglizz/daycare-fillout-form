@@ -240,6 +240,14 @@ async function notifyEmail(b, locLabel, brandName) {
   } catch (err) { console.error('notifyEmail failed', err); }
 }
 
+// Tag families that describe the contact's CURRENT state; a new value replaces the
+// old one. Only the families this form writes (centre, age group) are touched.
+const STATE_PREFIXES = ['loc-', 'group-'];
+function staleStateTags(existing, next) {
+  return (existing || []).filter((t) => !next.includes(t)
+    && STATE_PREFIXES.some((p) => t.startsWith(p) && next.some((n) => n.startsWith(p))));
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -321,7 +329,6 @@ module.exports = async function handler(req, res) {
     email: b.parentEmail,
     phone: toE164(b.parentPhone),
     source: 'Family Contact Form',
-    tags,
     customFields,
   });
 
@@ -332,22 +339,38 @@ module.exports = async function handler(req, res) {
 
   const contactId = upsert.data && upsert.data.contact && upsert.data.contact.id;
 
-  // Source tag, applied AFTER the upsert and derived from the MERGED fields on
-  // its response. /contacts/upsert replaces the tags array but merges
-  // customFields, so a tag written on an earlier submission is already gone while
-  // the ad fields still hold first touch. Deriving it from the merged fields is
-  // what stops a family who first arrived from an ad being downgraded to
-  // source-organic when they update their details later. POST /tags adds without
-  // replacing, so it leaves the tags above alone.
+  // Tags go on AFTER the upsert, never inside it: /contacts/upsert REPLACES the
+  // tags array, so a family who enrolled through the website would lose
+  // website-lead, speed-to-lead and their care/pay tags the moment they fill this
+  // form (seen live 2026-09-26). POST /tags adds without replacing.
+  // The source tag is derived from the MERGED fields on the upsert response
+  // (customFields merge, so the ad fields still hold first touch) — that is what
+  // stops a family who first arrived from an ad being downgraded to
+  // source-organic when they update their details later.
   if (contactId) {
     const tag = sourceTag(
       mergedField(upsert.data.contact, F.adSource),
       mergedField(upsert.data.contact, F.adClickId),
     );
-    const st = await ghl(`/contacts/${contactId}/tags`, 'POST', token, { tags: [tag] });
-    // Not fatal — the family's record is already saved; only the reporting tag is missing.
-    if (!st.ok) console.error('GHL source tag failed', st.status, JSON.stringify(st.data));
-    else console.log(`[source] ${contactId} tagged ${tag}`);
+    // One retry: family-contact-form is the tag the dashboard's Parent Logins inbox
+    // finds the family by. If both tries fail, tell the family to resubmit (the
+    // upsert is idempotent) rather than report success for a family nobody will see.
+    let st = await ghl(`/contacts/${contactId}/tags`, 'POST', token, { tags: [...tags, tag] });
+    if (!st.ok) { await new Promise((r) => setTimeout(r, 1000)); st = await ghl(`/contacts/${contactId}/tags`, 'POST', token, { tags: [...tags, tag] }); }
+    if (!st.ok) {
+      console.error('GHL tags failed', st.status, JSON.stringify(st.data));
+      return res.status(500).send('Unable to save right now. Please call (215) 236-5439 or try again in a moment.');
+    } else {
+      console.log(`[tags] ${contactId} tagged ${[...tags, tag].join(', ')}`);
+      // Centre and age group are current state: replace, never accumulate, or a
+      // family that switched centres keeps both loc- tags and the dashboard's
+      // Create login can enroll the child at the old centre.
+      const stale = staleStateTags(upsert.data.contact.tags, [...tags, tag]);
+      if (stale.length) {
+        const dr = await ghl(`/contacts/${contactId}/tags`, 'DELETE', token, { tags: stale });
+        if (!dr.ok) console.error('GHL stale tag removal failed', dr.status, JSON.stringify(dr.data));
+      }
+    }
   }
 
   // Note with the full intake (best-effort — never blocks success).
