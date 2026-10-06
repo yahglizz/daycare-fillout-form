@@ -98,3 +98,11 @@ test('bounded: huge names and big families never loop unbounded', () => {
   const kids = Array.from({ length: f.MAX_CHILDREN }, (_, i) => ({ name: `Kid${i} Lopez` }));
   assert.equal(f.mergeChildren(kids, { name: 'New Lopez' }).review, true);
 });
+
+test('DOB vs typed age conflict → child-age-review, no age tag', () => {
+  const now = new Date('2026-10-05T12:00:00Z');
+  assert.ok(f.ageConflict({ dob: '2026-08-09', age: '3' }, now));
+  assert.ok(!f.ageConflict({ dob: '2025-08-06', age: '11 months' }, now));
+  const tags = f.familyTags([{ name: 'J', dob: '2026-08-09', age: '3', loc: 'loc-1923-cecil-b-moore' }], {});
+  assert.ok(tags.includes('child-age-review')); assert.ok(!tags.some((t) => t.startsWith('age-')));
+});

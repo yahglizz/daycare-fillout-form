@@ -5,7 +5,7 @@
 
 const GHL_BASE = 'https://services.leadconnectorhq.com';
 const {
-  F2, TAG, ageYears, classroomFor, fieldOf, parseChildren, mergeChildren,
+  F2, TAG, ageYears, ageConflict, classroomFor, fieldOf, parseChildren, mergeChildren,
   familyTags, staleStateTags, brandForLoc, triggerForBrand, inWindow,
 } = require('./_family');
 
@@ -343,7 +343,8 @@ async function handler(req, res) {
   const locLabel = loc.address ? `${loc.name} — ${loc.address}` : loc.name;
   // Commas are the legacy child-list separator ("Maria Lopez, Juan Lopez").
   const childName = String(b.studentName).replace(/,/g, ' ').trim().replace(/\s+/g, ' ');
-  const classroom = classroomFor(ageYears(b.studentAge, b.studentDob));
+  // No classroom guess when the DOB and typed age disagree (tagged child-age-review).
+  const classroom = ageConflict({ dob: b.studentDob, age: b.studentAge }) ? '' : classroomFor(ageYears(b.studentAge, b.studentDob));
 
   // ── 1. Find-or-create the FAMILY, with no child identity in the write ──────
   // GHL dedupes the upsert on the parent's phone/email, so a parent already in

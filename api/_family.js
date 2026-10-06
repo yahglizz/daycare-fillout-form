@@ -54,6 +54,14 @@ function ageYears(ageText, dob, now = new Date()) {
   return Math.floor(v);
 }
 
+// DOB and the typed age disagree by 2+ years (a DOB typo like this year's date, or
+// an old misread "11 months"): staff decide, the system does not guess.
+function ageConflict(c, now = new Date()) {
+  const fromDob = ageYears('', c.dob, now);
+  const fromText = ageYears(c.age, '', now);
+  return !isNaN(fromDob) && !isNaN(fromText) && Math.abs(fromDob - fromText) >= 2;
+}
+
 function classroomFor(years) {
   if (isNaN(years)) return '';
   if (years < 1) return 'Infants';
@@ -180,8 +188,8 @@ function familyTags(children, b) {
   for (const c of children) {
     if (c.loc) tags.add(c.loc);
     if (c.group && GROUP_TAG[c.group]) tags.add(GROUP_TAG[c.group]);
-    const at = ageTag(ageYears(c.age, c.dob));
-    if (at) tags.add(at);
+    if (ageConflict(c)) tags.add('child-age-review');   // DOB and typed age disagree: no guess
+    else { const at = ageTag(ageYears(c.age, c.dob)); if (at) tags.add(at); }
     if (c.shirt || c.pants) tags.add('has-uniform-sizes');
   }
   if (children.length > 1) tags.add('multi-child');
@@ -215,6 +223,6 @@ const inWindow = (at = new Date()) => { const h = etHour(at); return h >= 8 && h
 
 module.exports = {
   MAX_CHILDREN, F2, TAG, AMT_LOC_TAG, AMT_BRAND, ATOB_BRAND, GROUP_TAG,
-  ageYears, classroomFor, ageTag, sameChild, nearChild, fieldOf, parseChildren, mergeChildren,
+  ageYears, ageConflict, classroomFor, ageTag, sameChild, nearChild, fieldOf, parseChildren, mergeChildren,
   familyTags, staleStateTags, brandForLoc, triggerForBrand, etHour, inWindow,
 };
