@@ -41,11 +41,15 @@ function ageYears(ageText, dob, now = new Date()) {
     if (tm < bm || (tm === bm && td < bd)) y -= 1;
     if (y >= 0) return y;
   }
-  const s = String(ageText || '').toLowerCase();
-  const n = s.match(/\d+(\.\d+)?/);
-  if (!n) return NaN;
-  const v = parseFloat(n[0]);
-  return /month|mo\b/.test(s) ? Math.floor(v / 12) : Math.floor(v);
+  // Free text: the unit next to the FIRST number decides ("3 years 6 months" = 3,
+  // "18 mos" = 1, "8 weeks" = under 1). A bare number is years.
+  const m = String(ageText || '').toLowerCase().match(/(\d+(?:\.\d+)?)\s*([a-z]*)/);
+  if (!m) return NaN;
+  const v = parseFloat(m[1]);
+  const unit = m[2];
+  if (/^(d|day|days|w|wk|wks|week|weeks)$/.test(unit)) return 0;
+  if (/^(m|mo|mos|mon|mons|month|months)$/.test(unit)) return Math.floor(v / 12);
+  return Math.floor(v);
 }
 
 function classroomFor(years) {
@@ -62,19 +66,47 @@ function ageTag(years) {
   return years < 1 ? 'age-infant' : `age-${years}`;
 }
 
-const norm = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim();
+// Lowercase, accents stripped, letters (any script) + spaces only. Hyphens become
+// spaces so "Rollins-Richardson" and "Rollins Richardson" read the same.
+const norm = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/[-‐]/g, ' ').replace(/[^\p{L} ]/gu, '').replace(/\s+/g, ' ').trim();
 
-// Same child? Full names match, or first names match and one side has no last
-// name / the last names match. Case, accents and punctuation are ignored.
+// First token + everything after the middle name(s) as one squashed surname.
+function nameParts(s) {
+  const w = norm(s).split(' ').filter(Boolean);
+  return { first: w[0] || '', last: w.length > 1 ? w[w.length - 1] : '', all: w.slice(1).join('') };
+}
+
+// Same child? First names equal, and the surnames agree: either side missing,
+// equal with spaces/hyphens removed, the same final surname (middle names
+// ignored), or an initial ("Maria L.") matching.
 function sameChild(a, b) {
-  const x = norm(a).split(' ');
-  const y = norm(b).split(' ');
-  if (!x[0] || !y[0]) return false;
-  if (x.join(' ') === y.join(' ')) return true;
-  if (x[0] !== y[0]) return false;
-  const lx = x.slice(1).join(' ');
-  const ly = y.slice(1).join(' ');
-  return !lx || !ly || lx === ly;
+  const x = nameParts(a);
+  const y = nameParts(b);
+  if (!x.first || !y.first || x.first !== y.first) return false;
+  if (!x.last || !y.last) return true;
+  if (x.all === y.all || x.last === y.last) return true;
+  const [s1, s2] = x.last.length <= y.last.length ? [x.last, y.last] : [y.last, x.last];
+  return s1.length === 1 && s2.startsWith(s1);
+}
+
+// Probably a typo of an existing child ("Marai Lopez" vs "Maria Lopez"): same
+// surname, first names one edit apart. Never auto-merged, never auto-appended.
+function nearChild(a, b) {
+  const x = nameParts(a);
+  const y = nameParts(b);
+  if (!x.last || x.last !== y.last || x.first === y.first) return false;
+  const [p, q] = [x.first, y.first];
+  if (Math.abs(p.length - q.length) > 1) return false;
+  const d = Array.from({ length: p.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= q.length; j++) d[0][j] = j;
+  for (let i = 1; i <= p.length; i++) {
+    for (let j = 1; j <= q.length; j++) {
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (p[i - 1] === q[j - 1] ? 0 : 1));
+      if (i > 1 && j > 1 && p[i - 1] === q[j - 2] && p[i - 2] === q[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+    }
+  }
+  return d[p.length][q.length] <= 1;
 }
 
 function fieldOf(contact, id) {
@@ -95,29 +127,49 @@ function parseChildren(contact, ids) {
     } catch { /* fall through to the legacy shape */ }
   }
   const names = String(fieldOf(contact, ids.childName) || '').split(',').map((s) => s.trim()).filter(Boolean);
+  // Child 0 inherits the centre/age group the contact already carries (when it
+  // has exactly one), so merging a sibling never strips those tags.
+  const tags = (contact?.tags || []).map((t) => String(t).toLowerCase());
+  const locs = tags.filter((t) => t.startsWith('loc-'));
+  const groups = Object.entries(GROUP_TAG).filter(([, t]) => tags.includes(t)).map(([g]) => g);
   return names.map((name, i) => (i === 0
-    ? { name, dob: fieldOf(contact, ids.childDob) || '', age: fieldOf(contact, ids.childAge) || '' }
+    ? { name, dob: fieldOf(contact, ids.childDob) || '', age: fieldOf(contact, ids.childAge) || '',
+      ...(locs.length === 1 ? { loc: locs[0] } : {}), ...(groups.length === 1 ? { group: groups[0] } : {}) }
     : { name }));
 }
 
 // Add or update one child. Never removes or reorders: child 0 stays the contact's
 // identity so GHL search and the dashboard's first card do not move under staff.
-function mergeChildren(existing, entry) {
+// parentName: a child name equal to the parent's is almost always the parent
+// typing their own name — on a family that already has children it is never
+// added as a new child; the submission is flagged for review instead.
+function mergeChildren(existing, entry, parentName = '') {
   const children = existing.map((c) => ({ ...c }));
   const i = children.findIndex((c) => sameChild(c.name, entry.name));
   if (i === -1) {
+    if (existing.length && (sameChild(entry.name, parentName) || children.some((c) => nearChild(c.name, entry.name)))) {
+      return { children, index: -1, added: false, review: true };
+    }
     children.push(entry);
     return { children, index: children.length - 1, added: existing.length > 0 };
   }
   // Latest submission wins per field, but a blank never erases what we had.
-  for (const [k, v] of Object.entries(entry)) if (v !== '' && v != null) children[i][k] = v;
+  // The name is the exception: "maria LOPEZ" must not replace "Maria Lopez".
+  // It only changes when the new one adds a word (a last name the first lacked).
+  for (const [k, v] of Object.entries(entry)) {
+    if (v === '' || v == null) continue;
+    if (k === 'name' && norm(v).split(' ').length <= norm(children[i].name).split(' ').length) continue;
+    children[i][k] = v;
+  }
   return { children, index: i, added: false };
 }
 
 // Every tag this form owns, computed from ALL children so a second child can
 // never strip the first child's location/age tags.
 function familyTags(children, b) {
-  const tags = new Set(['existing-student', 'enrolled', 'family-contact-form', 'form-type-existing-family', 'family-form-complete']);
+  const tags = new Set(['existing-student', 'enrolled', 'family-contact-form', 'form-type-existing-family']);
+  // Complete = every child has an age (DOB or typed) and a known centre.
+  if (children.length && children.every((c) => (c.dob || c.age) && c.loc && c.loc !== 'loc-unknown')) tags.add('family-form-complete');
   for (const c of children) {
     if (c.loc) tags.add(c.loc);
     if (c.group && GROUP_TAG[c.group]) tags.add(GROUP_TAG[c.group]);
@@ -156,6 +208,6 @@ const inWindow = (at = new Date()) => { const h = etHour(at); return h >= 8 && h
 
 module.exports = {
   F2, TAG, AMT_LOC_TAG, AMT_BRAND, ATOB_BRAND, GROUP_TAG,
-  ageYears, classroomFor, ageTag, sameChild, fieldOf, parseChildren, mergeChildren,
+  ageYears, classroomFor, ageTag, sameChild, nearChild, fieldOf, parseChildren, mergeChildren,
   familyTags, staleStateTags, brandForLoc, triggerForBrand, etHour, inWindow,
 };

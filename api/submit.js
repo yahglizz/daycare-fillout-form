@@ -238,15 +238,31 @@ async function notifyEmail(b, locLabel, brandName) {
   } catch (err) { console.error('notifyEmail failed', err); }
 }
 
+// A first name safe to merge into an SMS: letters (any script), apostrophe,
+// hyphen; 2-20 chars. Anything else → "there".
+function safeFirstName(full) {
+  const first = String(full || '').trim().split(/\s+/)[0] || '';
+  return /^[\p{L}][\p{L}'’-]{1,19}$/u.test(first) ? first : 'there';
+}
+
 // Arm the confirmation text (GHL workflow "Family Form Confirmation SMS" sends it).
 // Mirrors armSpeedToLeadSms in website/api/enroll.js: every compliance gate sits
 // here, above the trigger tag, because applying the tag IS the send. Never throws;
 // a failure here must not fail a family's submission. Returns a short status.
-async function armConfirmation(contactId, contact, b, brand, token) {
+async function armConfirmation(contactId, contact, b, brand, token, children = []) {
   if (b.smsConsent !== 'yes') return 'no-consent';
   if (process.env.FAMILY_CONFIRM_SMS_ENABLED === 'false') return 'disabled';
   const tags = (contact?.tags || []).map((t) => String(t).toLowerCase());
   if (tags.includes(TAG.confirmed)) return 'already-confirmed';
+  // GHL dedupes on phone OR email. When the email matched a family stored under a
+  // different phone, the text would go to a number this parent never typed.
+  if (String(contact.phone || '') !== toE164(b.parentPhone)) {
+    console.log(`[confirm] ${contactId} not armed: stored phone differs from the submitted one`);
+    return 'phone-mismatch';
+  }
+  // Do Not Disturb (staff-set or a past STOP) always wins.
+  const dndSms = contact?.dndSettings?.SMS?.status;
+  if (contact.dnd === true || dndSms === 'active') return 'dnd';
   // One confirmation text per family, ever. A second child, or the same family
   // resubmitting, keeps the pending state but never gets a second text.
   if (fieldOf(contact, F2.confirmSent)) {
@@ -255,7 +271,12 @@ async function armConfirmation(contactId, contact, b, brand, token) {
   }
   // Workflow inputs first, tag last: a workflow that starts before its fields
   // exist sends a message full of blanks. PUT, not upsert (upsert replaces tags).
-  const parentFirst = String(b.parentName || '').trim().split(/\s+/)[0] || 'there';
+  // This value is merged into a text sent FROM the business number, and the form
+  // is public: anything but a plain name (a link, a phone number, a sentence) is
+  // dropped so the form cannot be used to put words in the daycare's mouth.
+  let parentFirst = safeFirstName(b.parentName);
+  // A parent who typed the child's name as their own would be greeted as the child.
+  if (children.some((c) => String(c.name || '').split(' ')[0].toLowerCase() === parentFirst.toLowerCase())) parentFirst = 'there';
   const fr = await ghl(`/contacts/${contactId}`, 'PUT', token, {
     customFields: [{ id: F2.parentFirst, value: parentFirst }, { id: F2.smsBrand, value: brand }],
   });
@@ -274,7 +295,7 @@ async function armConfirmation(contactId, contact, b, brand, token) {
   return queued ? 'queued' : 'armed';
 }
 
-module.exports = async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).send('Method Not Allowed');
@@ -297,6 +318,8 @@ module.exports = async function handler(req, res) {
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.parentEmail)) return res.status(400).send('Invalid email address');
   if (b.smsConsent !== 'yes') return res.status(400).send('SMS consent is required');
+  // A US mobile or nothing: the confirmation text goes to this number.
+  if (!/^\+1[2-9]\d{9}$/.test(toE164(b.parentPhone))) return res.status(400).send('Please enter a 10-digit US mobile number.');
   // Free-text bounds: sizes come from a fixed select, anything long is not a size.
   for (const k of ['shirtSize', 'pantsSize']) b[k] = String(b[k] || '').slice(0, 40);
 
@@ -310,7 +333,8 @@ module.exports = async function handler(req, res) {
 
   const loc = LOCATIONS[b.location] || { name: b.location, address: '', tag: 'loc-unknown' };
   const locLabel = loc.address ? `${loc.name} — ${loc.address}` : loc.name;
-  const childName = String(b.studentName).trim().replace(/\s+/g, ' ');
+  // Commas are the legacy child-list separator ("Maria Lopez, Juan Lopez").
+  const childName = String(b.studentName).replace(/,/g, ' ').trim().replace(/\s+/g, ' ');
   const classroom = classroomFor(ageYears(b.studentAge, b.studentDob));
 
   // ── 1. Find-or-create the FAMILY, with no child identity in the write ──────
@@ -365,7 +389,8 @@ module.exports = async function handler(req, res) {
     name: childName, dob: b.studentDob || '', age: b.studentAge || '', group: classroom,
     loc: loc.tag, shirt: b.shirtSize, pants: b.pantsSize, updatedAt: new Date().toISOString(),
   };
-  const { children, index, added } = mergeChildren(parseChildren(contact, F), entry);
+  const { children, index, added, review } = mergeChildren(parseChildren(contact, F), entry, b.parentName);
+  if (review) console.log(`[family] ${contactId} child name needs review: "${childName}" (parent's name or near an existing child)`);
   const first = children[0];
   const [cFirst, ...cRest] = String(first.name).split(' ');
   const childFields = [
@@ -388,6 +413,11 @@ module.exports = async function handler(req, res) {
 
   // ── 4. Tags: additive POST (never the upsert — it REPLACES the array) ───────
   const tags = familyTags(children, b);
+  if (review) tags.push('child-name-review');
+  // GHL matched this family by EMAIL while the stored phone is different (or the
+  // phone belongs to another contact). Saved, never texted, flagged for staff.
+  const phoneMismatch = String(contact.phone || '') !== toE164(b.parentPhone);
+  if (phoneMismatch) tags.push('contact-match-review');
   tags.push(sourceTag(mergedField(contact, F.adSource), mergedField(contact, F.adClickId)));
   let st = await ghl(`/contacts/${contactId}/tags`, 'POST', token, { tags });
   if (!st.ok) { await new Promise((r) => setTimeout(r, 1000)); st = await ghl(`/contacts/${contactId}/tags`, 'POST', token, { tags }); }
@@ -405,7 +435,10 @@ module.exports = async function handler(req, res) {
 
   // ── 5. Note with the full intake (best-effort) ───────────────────────────────
   const note = await ghl(`/contacts/${contactId}/notes`, 'POST', token, {
-    body: summaryText(b, locLabel) + (children.length > 1 ? `\n\nCHILDREN ON THIS FAMILY: ${children.map((c) => c.name).join(', ')}` : ''),
+    body: summaryText(b, locLabel)
+      + (phoneMismatch ? `\n\nREVIEW: this form was submitted with phone ${toE164(b.parentPhone)} but matched this contact (stored phone ${contact.phone || 'none'}) by email. No confirmation text was sent. Check whether this is the same family.` : '')
+      + (review ? `\n\nREVIEW: "${childName}" was NOT added as a new child — it matches the parent's name or is one letter off an existing child. Fix the child list by hand if this really is another child.` : '')
+      + (children.length > 1 ? `\n\nCHILDREN ON THIS FAMILY: ${children.map((c) => c.name).join(', ')}` : ''),
   });
   if (!note.ok) console.error('GHL note failed', note.status, JSON.stringify(note.data));
 
@@ -415,8 +448,16 @@ module.exports = async function handler(req, res) {
   let confirm = 'skipped';
   try {
     contact.tags = [...new Set([...(contact.tags || []), ...tags])];
-    confirm = await armConfirmation(contactId, contact, b, brandForLoc(loc.tag), token);
+    confirm = await armConfirmation(contactId, contact, b, brandForLoc(loc.tag), token, children);
   } catch (err) { console.error('[confirm] arm crashed', err && err.message); confirm = 'error'; }
 
-  return res.status(200).json({ ok: true, contactId, child: index + 1, children: children.length, confirm });
-};
+  // The response says nothing about the family: this endpoint is public, and
+  // echoing a contact id or child count would confirm that a phone number belongs
+  // to an enrolled family. Details stay server-side (logs + res.familyResult for
+  // the local test harness — never serialized).
+  res.familyResult = { contactId, child: index + 1, children: children.length, confirm, review: !!review };
+  return res.status(200).json({ ok: true });
+}
+
+module.exports = handler;
+module.exports.safeFirstName = safeFirstName;

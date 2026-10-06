@@ -1,7 +1,9 @@
 test/
 scripts/
-UI-REVIEW.md
+*.md
 .swarm/
+.claude-flow/
+.DS_Store
 agentdb.rvf
 agentdb.rvf.lock
 ruvector.db

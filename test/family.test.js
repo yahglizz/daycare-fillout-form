@@ -1,4 +1,4 @@
-// node --test test/   — pure-logic checks for api/_family.js
+// node --test test/family.test.js — pure-logic checks for api/_family.js
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const f = require('../api/_family');
@@ -34,6 +34,8 @@ test('sibling is appended, child 0 untouched; resubmit updates in place', () => 
   assert.equal(again.index, 0); assert.ok(!again.added);
   assert.equal(again.children[0].dob, '2022-01-01', 'blank never erases');
   assert.equal(again.children[0].shirt, '3T');
+  assert.equal(again.children[0].name, 'Maria Lopez', 'casing of a resubmit never replaces the stored name');
+  assert.equal(f.mergeChildren([{ name: 'Maria' }], { name: 'Maria Lopez' }).children[0].name, 'Maria Lopez', 'a fuller name does');
 });
 
 test('children_json wins over the legacy comma list; bad JSON falls back', () => {
@@ -63,4 +65,27 @@ test('send window is Philadelphia 8am–9pm', () => {
   assert.ok(f.inWindow(new Date('2026-10-05T12:00:00Z')));   // 8am EDT
   assert.ok(!f.inWindow(new Date('2026-10-05T11:59:00Z')));  // 7:59am
   assert.ok(!f.inWindow(new Date('2026-10-06T01:00:00Z')));  // 9pm
+});
+
+test('reviewer cases: hyphens, middle names, initials, typos, ages', () => {
+  assert.ok(f.sameChild('Oribella Rollins-Richardson', 'Oribella Rollins Richardson'));
+  assert.ok(f.sameChild('Maria Elena Lopez', 'Maria Lopez'));
+  assert.ok(f.sameChild('Maria L.', 'Maria Lopez'));
+  assert.ok(!f.sameChild('Marai Lopez', 'Maria Lopez'));
+  assert.ok(f.nearChild('Marai Lopez', 'Maria Lopez'));
+  assert.ok(!f.nearChild('Juan Lopez', 'Maria Lopez'));
+  for (const [v, y] of [['3 years 6 months', 3], ['8 weeks', 0], ['6 wks', 0], ['18 mos', 1], ['3 years (+1 sibling)', 3]]) assert.equal(f.ageYears(v, ''), y, v);
+});
+
+test('parent typing their own name is never added as a child', () => {
+  const r = f.mergeChildren([{ name: 'Maria Lopez' }], { name: 'Ana Lopez' }, 'Ana Lopez');
+  assert.equal(r.review, true); assert.equal(r.children.length, 1);
+  assert.equal(f.mergeChildren([], { name: 'Ana Lopez' }, 'Ana Lopez').children.length, 1, 'first child on a new contact is still saved');
+});
+
+test('legacy contact: child 0 inherits the single loc/group tag', () => {
+  const c = contact({ CN: 'Maria Lopez, Juan Lopez' }, ['loc-921-n-18th', 'group-prek', 'website-lead']);
+  const kids = f.parseChildren(c, IDS);
+  assert.equal(kids[0].loc, 'loc-921-n-18th'); assert.equal(kids[0].group, 'Pre-K');
+  assert.deepEqual(f.staleStateTags(c.tags, f.familyTags(kids, {})), []);
 });

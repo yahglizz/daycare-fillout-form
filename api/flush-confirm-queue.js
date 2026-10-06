@@ -21,6 +21,18 @@ function brandOf(c) {
   return tagsOf(c).includes(AMT_LOC_TAG) ? AMT_BRAND : 'A Touch of Blessings';
 }
 
+// Re-checked at release time — hours may have passed since the family submitted.
+// Held contacts keep the queue tag and show in the dry-run for staff.
+function holdReason(c) {
+  const tags = tagsOf(c);
+  if (c.dnd === true || c?.dndSettings?.SMS?.status === 'active') return 'dnd';
+  if (tags.includes(TAG.confirmed)) return 'already-confirmed';
+  if (!tags.includes('sms-consent')) return 'no-consent-tag';
+  const locs = tags.filter((t) => t.startsWith('loc-'));
+  if (locs.includes(AMT_LOC_TAG) && locs.some((t) => t !== AMT_LOC_TAG) && !fieldOf(c, F2.smsBrand)) return 'mixed-entities';
+  return '';
+}
+
 async function listQueued(headers, locationId) {
   const found = [];
   let startAfterId = '';
@@ -54,18 +66,26 @@ module.exports = async function handler(req, res) {
 
   const dry = /(^|&)dry=1(&|$)/.test(String(req.url || '').split('?')[1] || '');
   const hour = etHour();
-  if (!inWindow()) return res.status(200).json({ ok: true, window: 'closed', etHour: hour, released: 0 });
+  // A dry run reports at any hour; a real run only releases inside the window.
+  if (!dry && !inWindow()) return res.status(200).json({ ok: true, window: 'closed', etHour: hour, released: 0 });
 
   const headers = { Authorization: `Bearer ${token}`, Version: '2021-07-28', 'Content-Type': 'application/json', 'User-Agent': 'atob-forms/1.0' };
   let queued;
   try { queued = await listQueued(headers, locationId); }
   catch (err) { console.error('[confirm-flush] list failed:', err.message); return res.status(502).json({ ok: false, error: 'contact lookup failed' }); }
 
-  if (dry) return res.status(200).json({ ok: true, dryRun: true, etHour: hour, wouldRelease: queued.map((c) => ({ id: c.id, trigger: triggerForBrand(brandOf(c)) })) });
+  const held = [];
+  const ready = [];
+  for (const c of queued) {
+    const why = holdReason(c);
+    if (why) held.push({ id: c.id, why }); else ready.push(c);
+  }
+  if (dry) return res.status(200).json({ ok: true, dryRun: true, window: inWindow() ? 'open' : 'closed', etHour: hour, held, wouldRelease: ready.map((c) => ({ id: c.id, trigger: triggerForBrand(brandOf(c)) })) });
+  for (const h of held) console.log(`[confirm-flush] ${h.id} held: ${h.why}`);
 
   const released = [];
   const failed = [];
-  for (const c of queued) {
+  for (const c of ready) {
     const trigger = triggerForBrand(brandOf(c));
     // Trigger first, queue tag second: a failed removal re-adds a trigger the
     // contact already has (workflow re-entry is OFF → no second text). The
@@ -77,5 +97,5 @@ module.exports = async function handler(req, res) {
     released.push({ id: c.id, trigger });
   }
   console.log(`[confirm-flush] released ${released.length}, failed ${failed.length}`);
-  return res.status(200).json({ ok: failed.length === 0, etHour: hour, released, failed });
+  return res.status(200).json({ ok: failed.length === 0, etHour: hour, released, failed, held });
 };
