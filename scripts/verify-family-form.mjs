@@ -96,11 +96,15 @@ try {
   }
 
   if (DASH) {
-    await sleep(8000); // GHL's contact list lags writes by a few seconds
-    const d = await (await fetch(`${DASH}/api/daycare/ghl/pending-families`)).json();
-    const cards = (d.families || []).filter((x) => x.contact_id === contactId);
+    // GHL's contact LIST lags writes (measured 8s on 2026-10-05, 21s on 2026-10-06): poll.
+    let cards = [];
+    for (let waited = 0; waited <= 90000 && cards.length < 2; waited += 10000) {
+      await sleep(10000);
+      const d = await (await fetch(`${DASH}/api/daycare/ghl/pending-families`)).json();
+      cards = (d.families || []).filter((x) => x.contact_id === contactId);
+    }
     ok(cards.length === 2 && cards[1].card_id === `${contactId}#1`, `dashboard: one card per child (${cards.map((x) => x.card_id).join(', ')})`);
-    ok(cards.every((x) => x.ready), 'dashboard: both children ready for Create login');
+    ok(cards.length === 2 && cards.every((x) => x.ready), `dashboard: both children ready for Create login (${cards.map((x) => (x.missing || []).join("+") || "ready").join(", ")})`);
   }
 } catch (e) {
   ok(false, `crashed: ${e.message}`);
