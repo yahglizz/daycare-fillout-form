@@ -1,6 +1,6 @@
-.vercel
-.claude-flow/
-.DS_Store
+test/
+scripts/
+UI-REVIEW.md
 .swarm/
 agentdb.rvf
 agentdb.rvf.lock

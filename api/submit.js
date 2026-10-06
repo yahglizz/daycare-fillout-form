@@ -4,6 +4,10 @@
 // (these are current students, not sales leads). Dependency-free (Node 18+ fetch).
 
 const GHL_BASE = 'https://services.leadconnectorhq.com';
+const {
+  F2, TAG, ageYears, classroomFor, fieldOf, parseChildren, mergeChildren,
+  familyTags, staleStateTags, brandForLoc, triggerForBrand, inWindow,
+} = require('./_family');
 
 // Custom-field ids for location 4JIvZEmkY5EjTsDRnjBN (plain identifiers, not secrets).
 const F = {
@@ -61,7 +65,6 @@ const LOCATIONS = {
   'amt-1923': { name: "A Mother's Touch Inc.", address: '1923 Cecil B. Moore Ave., Philadelphia, PA 19121', tag: 'loc-1923-cecil-b-moore' },
 };
 
-const GROUP_TAG = { Infants: 'group-infants', Toddlers: 'group-toddlers', 'Pre-K': 'group-prek', 'School-Age': 'group-schoolage' };
 
 function toE164(p) {
   const d = String(p || '').replace(/\D/g, '');
@@ -70,21 +73,6 @@ function toE164(p) {
   return d ? `+${d}` : '';
 }
 
-// Best-effort classroom from age text ("3 years") or DOB. Returns '' if unknown.
-function deriveClassroom(ageText, dob) {
-  let years = NaN;
-  const m = String(ageText || '').match(/\d+(\.\d+)?/);
-  if (m) years = parseFloat(m[0]);
-  if (isNaN(years) && dob) {
-    const b = new Date(dob), now = new Date();
-    if (!isNaN(b.getTime())) years = (now - b) / (365.25 * 24 * 3600 * 1000);
-  }
-  if (isNaN(years)) return '';
-  if (years < 1) return 'Infants';
-  if (years < 3) return 'Toddlers';
-  if (years < 5) return 'Pre-K';
-  return 'School-Age';
-}
 
 function summaryText(b, locLabel) {
   const lines = [
@@ -131,6 +119,8 @@ async function ghl(path, method, token, payload) {
       Authorization: `Bearer ${token}`,
       Version: '2021-07-28',
       'Content-Type': 'application/json',
+      // services.leadconnectorhq.com's WAF 403s some default agents.
+      'User-Agent': 'atob-forms/1.0',
     },
     body: payload ? JSON.stringify(payload) : undefined,
   });
@@ -248,12 +238,40 @@ async function notifyEmail(b, locLabel, brandName) {
   } catch (err) { console.error('notifyEmail failed', err); }
 }
 
-// Tag families that describe the contact's CURRENT state; a new value replaces the
-// old one. Only the families this form writes (centre, age group) are touched.
-const STATE_PREFIXES = ['loc-', 'group-'];
-function staleStateTags(existing, next) {
-  return (existing || []).filter((t) => !next.includes(t)
-    && STATE_PREFIXES.some((p) => t.startsWith(p) && next.some((n) => n.startsWith(p))));
+// Arm the confirmation text (GHL workflow "Family Form Confirmation SMS" sends it).
+// Mirrors armSpeedToLeadSms in website/api/enroll.js: every compliance gate sits
+// here, above the trigger tag, because applying the tag IS the send. Never throws;
+// a failure here must not fail a family's submission. Returns a short status.
+async function armConfirmation(contactId, contact, b, brand, token) {
+  if (b.smsConsent !== 'yes') return 'no-consent';
+  if (process.env.FAMILY_CONFIRM_SMS_ENABLED === 'false') return 'disabled';
+  const tags = (contact?.tags || []).map((t) => String(t).toLowerCase());
+  if (tags.includes(TAG.confirmed)) return 'already-confirmed';
+  // One confirmation text per family, ever. A second child, or the same family
+  // resubmitting, keeps the pending state but never gets a second text.
+  if (fieldOf(contact, F2.confirmSent)) {
+    if (!tags.includes(TAG.pending)) await ghl(`/contacts/${contactId}/tags`, 'POST', token, { tags: [TAG.pending] });
+    return 'already-sent';
+  }
+  // Workflow inputs first, tag last: a workflow that starts before its fields
+  // exist sends a message full of blanks. PUT, not upsert (upsert replaces tags).
+  const parentFirst = String(b.parentName || '').trim().split(/\s+/)[0] || 'there';
+  const fr = await ghl(`/contacts/${contactId}`, 'PUT', token, {
+    customFields: [{ id: F2.parentFirst, value: parentFirst }, { id: F2.smsBrand, value: brand }],
+  });
+  if (!fr.ok) { console.error('[confirm] field write failed — NOT arming', fr.status, JSON.stringify(fr.data)); return 'field-write-failed'; }
+  // The workflow waits 3 minutes, so judge the window at the moment it sends.
+  const queued = !inWindow(new Date(Date.now() + 3 * 60 * 1000));
+  const tag = queued ? TAG.queued : triggerForBrand(brand);
+  const tr = await ghl(`/contacts/${contactId}/tags`, 'POST', token, { tags: [tag, TAG.pending] });
+  if (!tr.ok) { console.error('[confirm] trigger tag failed — no text', tr.status, JSON.stringify(tr.data)); return 'tag-failed'; }
+  // Marker only once the tag is on, so any earlier failure retries cleanly.
+  const mr = await ghl(`/contacts/${contactId}`, 'PUT', token, {
+    customFields: [{ id: F2.confirmSent, value: new Date().toISOString() }],
+  });
+  if (!mr.ok) console.error('[confirm] MARKER WRITE FAILED — a resubmit could re-text', mr.status, JSON.stringify(mr.data));
+  console.log(`[confirm] ${contactId} ${queued ? 'queued for 8am' : 'armed'} (${tag})`);
+  return queued ? 'queued' : 'armed';
 }
 
 module.exports = async function handler(req, res) {
@@ -262,7 +280,9 @@ module.exports = async function handler(req, res) {
     return res.status(405).send('Method Not Allowed');
   }
 
-  const b = (typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {}));
+  let b;
+  try { b = (typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})); }
+  catch { return res.status(400).send('Invalid request'); }
 
   // Honeypot: bots fill the hidden "company" field. Pretend success.
   if (b.company) return res.status(200).json({ ok: true });
@@ -277,6 +297,8 @@ module.exports = async function handler(req, res) {
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.parentEmail)) return res.status(400).send('Invalid email address');
   if (b.smsConsent !== 'yes') return res.status(400).send('SMS consent is required');
+  // Free-text bounds: sizes come from a fixed select, anything long is not a size.
+  for (const k of ['shirtSize', 'pantsSize']) b[k] = String(b[k] || '').slice(0, 40);
 
   const token = process.env.GHL_PIT_TOKEN;
   const locationId = process.env.GHL_LOCATION_ID;
@@ -284,38 +306,29 @@ module.exports = async function handler(req, res) {
     console.error('GHL not configured (GHL_PIT_TOKEN / GHL_LOCATION_ID missing)');
     return res.status(500).send('Our system is not fully set up yet. Please call (215) 236-5439.');
   }
+  const fail = () => res.status(500).send('Unable to save right now. Please call (215) 236-5439 or try again in a moment.');
 
   const loc = LOCATIONS[b.location] || { name: b.location, address: '', tag: 'loc-unknown' };
   const locLabel = loc.address ? `${loc.name} — ${loc.address}` : loc.name;
-  const classroom = deriveClassroom(b.studentAge, b.studentDob);
+  const childName = String(b.studentName).trim().replace(/\s+/g, ' ');
+  const classroom = classroomFor(ageYears(b.studentAge, b.studentDob));
 
-  // Contact identity is the CHILD's name (staff look records up by kid name, not
-  // parent name); the parent's name is preserved in its own custom field below.
-  const parts = String(b.studentName || '').trim().split(/\s+/);
-  const firstName = parts[0] || String(b.studentName || '');
-  const lastName = parts.slice(1).join(' ');
-
-  // form-type tag is the explicit, self-describing marker: this form is filled out
-  // by families ALREADY at one of the centers, updating their info into the system —
-  // never a brand-new inquiry. (New inquiries only ever come from the marketing
-  // site's Website Enrollment Form, tagged form-type-new-inquiry in enroll.js.)
-  const tags = ['existing-student', 'enrolled', 'family-contact-form', 'form-type-existing-family', loc.tag];
-  if (classroom && GROUP_TAG[classroom]) tags.push(GROUP_TAG[classroom]);
-
-  const customFields = [
-    { id: F.childName, value: b.studentName },
+  // ── 1. Find-or-create the FAMILY, with no child identity in the write ──────
+  // GHL dedupes the upsert on the parent's phone/email, so a parent already in
+  // GHL (website lead, earlier form, staff-made) is updated, never duplicated.
+  // Child fields are left out on purpose: writing them here would overwrite the
+  // first child the moment a parent submits for a second one. They are merged
+  // in step 3 after reading what the contact already holds.
+  const familyFields = [
     { id: F.parentName, value: b.parentName },
     { id: F.preferredLocation, value: locLabel },
     { id: F.enrollStatus, value: 'Enrolled' },
     { id: F.emergencyName, value: b.emergencyName },
     { id: F.emergencyPhone, value: b.emergencyPhone },
     { id: F.emergencyRelationship, value: b.emergencyRelationship },
+    { id: F.smsConsent, value: new Date().toISOString().slice(0, 10) },
   ];
-  if (b.studentDob) customFields.push({ id: F.childDob, value: b.studentDob });
-  if (b.studentAge) customFields.push({ id: F.childAge, value: b.studentAge });
-  if (b.parentRelationship) customFields.push({ id: F.parentRelationship, value: b.parentRelationship });
-  if (classroom) customFields.push({ id: F.classroom, value: classroom });
-  if (b.smsConsent === 'yes') customFields.push({ id: F.smsConsent, value: new Date().toISOString().slice(0, 10) });
+  if (b.parentRelationship) familyFields.push({ id: F.parentRelationship, value: b.parentRelationship });
 
   // Durable ad attribution, written the same way the enrollment form writes it.
   const a = parseAttr(b.attr) || {};
@@ -323,71 +336,87 @@ module.exports = async function handler(req, res) {
     (a.fbclid ? 'facebook / paid' : a.gclid ? 'google / paid' : '');
   const adContent = [a.utm_content, a.utm_term].filter(Boolean).join(' | ');
   for (const [id, value] of [
-    [F.adCampaign, a.utm_campaign],
-    [F.adSource, adSource],
-    [F.adContent, adContent],
-    [F.adClickId, a.fbclid || a.gclid],
-  ]) if (value) customFields.push({ id, value });
+    [F.adCampaign, a.utm_campaign], [F.adSource, adSource], [F.adContent, adContent], [F.adClickId, a.fbclid || a.gclid],
+  ]) if (value) familyFields.push({ id, value });
 
   const upsert = await ghl('/contacts/upsert', 'POST', token, {
     locationId,
-    name: b.studentName,
-    firstName,
-    lastName,
     email: b.parentEmail,
     phone: toE164(b.parentPhone),
     source: 'Family Contact Form',
-    customFields,
+    customFields: familyFields,
   });
-
   if (!upsert.ok) {
     console.error('GHL upsert failed', upsert.status, JSON.stringify(upsert.data));
-    return res.status(500).send('Unable to save right now. Please call (215) 236-5439 or try again in a moment.');
+    return fail();
   }
+  const contactId = upsert.data?.contact?.id;
+  if (!contactId) { console.error('GHL upsert returned no contact id'); return fail(); }
 
-  const contactId = upsert.data && upsert.data.contact && upsert.data.contact.id;
+  // ── 2. Read the contact back. GET by id is immediately consistent (search
+  // endpoints lag minutes), so a parent submitting two kids back to back still
+  // sees child 1 here.
+  const got = await ghl(`/contacts/${contactId}`, 'GET', token);
+  if (!got.ok) { console.error('GHL contact read failed', got.status, JSON.stringify(got.data)); return fail(); }
+  const contact = got.data?.contact || {};
 
-  // Tags go on AFTER the upsert, never inside it: /contacts/upsert REPLACES the
-  // tags array, so a family who enrolled through the website would lose
-  // website-lead, speed-to-lead and their care/pay tags the moment they fill this
-  // form (seen live 2026-09-26). POST /tags adds without replacing.
-  // The source tag is derived from the MERGED fields on the upsert response
-  // (customFields merge, so the ad fields still hold first touch) — that is what
-  // stops a family who first arrived from an ad being downgraded to
-  // source-organic when they update their details later.
-  if (contactId) {
-    const tag = sourceTag(
-      mergedField(upsert.data.contact, F.adSource),
-      mergedField(upsert.data.contact, F.adClickId),
-    );
-    // One retry: family-contact-form is the tag the dashboard's Parent Logins inbox
-    // finds the family by. If both tries fail, tell the family to resubmit (the
-    // upsert is idempotent) rather than report success for a family nobody will see.
-    let st = await ghl(`/contacts/${contactId}/tags`, 'POST', token, { tags: [...tags, tag] });
-    if (!st.ok) { await new Promise((r) => setTimeout(r, 1000)); st = await ghl(`/contacts/${contactId}/tags`, 'POST', token, { tags: [...tags, tag] }); }
-    if (!st.ok) {
-      console.error('GHL tags failed', st.status, JSON.stringify(st.data));
-      return res.status(500).send('Unable to save right now. Please call (215) 236-5439 or try again in a moment.');
-    } else {
-      console.log(`[tags] ${contactId} tagged ${[...tags, tag].join(', ')}`);
-      // Centre and age group are current state: replace, never accumulate, or a
-      // family that switched centres keeps both loc- tags and the dashboard's
-      // Create login can enroll the child at the old centre.
-      const stale = staleStateTags(upsert.data.contact.tags, [...tags, tag]);
-      if (stale.length) {
-        const dr = await ghl(`/contacts/${contactId}/tags`, 'DELETE', token, { tags: stale });
-        if (!dr.ok) console.error('GHL stale tag removal failed', dr.status, JSON.stringify(dr.data));
-      }
-    }
+  // ── 3. Merge this child into the family ──────────────────────────────────────
+  const entry = {
+    name: childName, dob: b.studentDob || '', age: b.studentAge || '', group: classroom,
+    loc: loc.tag, shirt: b.shirtSize, pants: b.pantsSize, updatedAt: new Date().toISOString(),
+  };
+  const { children, index, added } = mergeChildren(parseChildren(contact, F), entry);
+  const first = children[0];
+  const [cFirst, ...cRest] = String(first.name).split(' ');
+  const childFields = [
+    { id: F2.childrenJson, value: JSON.stringify(children) },
+    // Legacy comma list — the dashboard and every older reader still use it.
+    { id: F.childName, value: children.map((c) => c.name).join(', ') },
+    // Contact-level child fields describe child 0 (the contact's identity).
+    { id: F.childDob, value: first.dob || '' },
+    { id: F.childAge, value: first.age || '' },
+    { id: F2.shirtSize, value: first.shirt || '' },
+    { id: F2.pantsSize, value: first.pants || '' },
+  ];
+  if (first.group) childFields.push({ id: F.classroom, value: first.group });
+  const put = await ghl(`/contacts/${contactId}`, 'PUT', token, {
+    // Identity = the CHILD (staff look families up by kid). Child 0 always.
+    firstName: cFirst, lastName: cRest.join(' '), name: first.name,
+    customFields: childFields.filter((f) => f.value !== ''),
+  });
+  if (!put.ok) { console.error('GHL child write failed', put.status, JSON.stringify(put.data)); return fail(); }
+
+  // ── 4. Tags: additive POST (never the upsert — it REPLACES the array) ───────
+  const tags = familyTags(children, b);
+  tags.push(sourceTag(mergedField(contact, F.adSource), mergedField(contact, F.adClickId)));
+  let st = await ghl(`/contacts/${contactId}/tags`, 'POST', token, { tags });
+  if (!st.ok) { await new Promise((r) => setTimeout(r, 1000)); st = await ghl(`/contacts/${contactId}/tags`, 'POST', token, { tags }); }
+  if (!st.ok) {
+    // family-contact-form is how the dashboard finds the family — no tag, no card.
+    console.error('GHL tags failed', st.status, JSON.stringify(st.data));
+    return fail();
   }
-
-  // Note with the full intake (best-effort — never blocks success).
-  if (contactId) {
-    const note = await ghl(`/contacts/${contactId}/notes`, 'POST', token, { body: summaryText(b, locLabel) });
-    if (!note.ok) console.error('GHL note failed', note.status, JSON.stringify(note.data));
+  const stale = staleStateTags(contact.tags, tags);
+  if (stale.length) {
+    const dr = await ghl(`/contacts/${contactId}/tags`, 'DELETE', token, { tags: stale });
+    if (!dr.ok) console.error('GHL stale tag removal failed', dr.status, JSON.stringify(dr.data));
   }
+  console.log(`[family] ${contactId} child ${index + 1}/${children.length}${added ? ' (sibling added)' : ''} tags ${tags.join(', ')}`);
+
+  // ── 5. Note with the full intake (best-effort) ───────────────────────────────
+  const note = await ghl(`/contacts/${contactId}/notes`, 'POST', token, {
+    body: summaryText(b, locLabel) + (children.length > 1 ? `\n\nCHILDREN ON THIS FAMILY: ${children.map((c) => c.name).join(', ')}` : ''),
+  });
+  if (!note.ok) console.error('GHL note failed', note.status, JSON.stringify(note.data));
 
   await notifyEmail(b, locLabel, loc.name);
 
-  return res.status(200).json({ ok: true, contactId: contactId || null });
+  // ── 6. Confirmation text (never fails the submission) ────────────────────────
+  let confirm = 'skipped';
+  try {
+    contact.tags = [...new Set([...(contact.tags || []), ...tags])];
+    confirm = await armConfirmation(contactId, contact, b, brandForLoc(loc.tag), token);
+  } catch (err) { console.error('[confirm] arm crashed', err && err.message); confirm = 'error'; }
+
+  return res.status(200).json({ ok: true, contactId, child: index + 1, children: children.length, confirm });
 };
