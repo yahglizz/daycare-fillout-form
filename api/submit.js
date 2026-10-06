@@ -318,6 +318,14 @@ async function handler(req, res) {
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.parentEmail)) return res.status(400).send('Invalid email address');
   if (b.smsConsent !== 'yes') return res.status(400).send('SMS consent is required');
+  // Every free-text field is bounded before any processing: this endpoint is
+  // public, and names go through matching loops in _family.js.
+  const LIMITS = { studentName: 80, parentName: 80, parentRelationship: 40, emergencyName: 80, emergencyPhone: 30,
+    emergencyRelationship: 40, parentEmail: 120, parentPhone: 30, studentAge: 30, studentDob: 10, notes: 2000, location: 20 };
+  for (const [k, n] of Object.entries(LIMITS)) if (String(b[k] || '').length > n) return res.status(400).send(`That ${k} is too long.`);
+  b.people = (Array.isArray(b.people) ? b.people : []).slice(0, 10).map((p) => ({
+    name: String(p?.name || '').slice(0, 80), relationship: String(p?.relationship || '').slice(0, 40), phone: String(p?.phone || '').slice(0, 30) }));
+  if (String(b.attr || '').length > 4000) b.attr = '';
   // A US mobile or nothing: the confirmation text goes to this number.
   if (!/^\+1[2-9]\d{9}$/.test(toE164(b.parentPhone))) return res.status(400).send('Please enter a 10-digit US mobile number.');
   // Free-text bounds: sizes come from a fixed select, anything long is not a size.

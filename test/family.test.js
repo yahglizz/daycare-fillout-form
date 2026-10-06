@@ -89,3 +89,12 @@ test('legacy contact: child 0 inherits the single loc/group tag', () => {
   assert.equal(kids[0].loc, 'loc-921-n-18th'); assert.equal(kids[0].group, 'Pre-K');
   assert.deepEqual(f.staleStateTags(c.tags, f.familyTags(kids, {})), []);
 });
+
+test('bounded: huge names and big families never loop unbounded', () => {
+  const big = 'a'.repeat(100000);
+  const t = Date.now();
+  assert.equal(f.nearChild(big, big + 'b'), false);
+  assert.ok(Date.now() - t < 50);
+  const kids = Array.from({ length: f.MAX_CHILDREN }, (_, i) => ({ name: `Kid${i} Lopez` }));
+  assert.equal(f.mergeChildren(kids, { name: 'New Lopez' }).review, true);
+});

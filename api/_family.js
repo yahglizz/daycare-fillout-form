@@ -25,6 +25,8 @@ const AMT_LOC_TAG = 'loc-1923-cecil-b-moore';
 const AMT_BRAND = "A Mother's Touch";
 const ATOB_BRAND = 'A Touch of Blessings';
 
+const MAX_CHILDREN = 12;
+
 const GROUP_TAG = { Infants: 'group-infants', Toddlers: 'group-toddlers', 'Pre-K': 'group-prek', 'School-Age': 'group-schoolage' };
 
 // Whole years from DOB (preferred) or the free-text age ("3", "3 years", "18 months").
@@ -93,6 +95,8 @@ function sameChild(a, b) {
 // Probably a typo of an existing child ("Marai Lopez" vs "Maria Lopez"): same
 // surname, first names one edit apart. Never auto-merged, never auto-appended.
 function nearChild(a, b) {
+  // Bounded: names are capped in submit.js, and this never runs on long input.
+  if (String(a || '').length > 60 || String(b || '').length > 60) return false;
   const x = nameParts(a);
   const y = nameParts(b);
   if (!x.last || x.last !== y.last || x.first === y.first) return false;
@@ -122,8 +126,8 @@ function parseChildren(contact, ids) {
   const raw = fieldOf(contact, F2.childrenJson);
   if (raw) {
     try {
-      const arr = JSON.parse(raw);
-      if (Array.isArray(arr) && arr.length) return arr.filter((c) => c && c.name);
+      const arr = String(raw).length < 20000 ? JSON.parse(raw) : null;
+      if (Array.isArray(arr) && arr.length) return arr.filter((c) => c && c.name).slice(0, MAX_CHILDREN);
     } catch { /* fall through to the legacy shape */ }
   }
   const names = String(fieldOf(contact, ids.childName) || '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -146,6 +150,9 @@ function parseChildren(contact, ids) {
 function mergeChildren(existing, entry, parentName = '') {
   const children = existing.map((c) => ({ ...c }));
   const i = children.findIndex((c) => sameChild(c.name, entry.name));
+  // A family is a handful of children; past MAX_CHILDREN a submission is flagged,
+  // never appended (keeps children_json and every per-child loop bounded).
+  if (i === -1 && children.length >= MAX_CHILDREN) return { children, index: -1, added: false, review: true };
   if (i === -1) {
     if (existing.length && (sameChild(entry.name, parentName) || children.some((c) => nearChild(c.name, entry.name)))) {
       return { children, index: -1, added: false, review: true };
@@ -207,7 +214,7 @@ function etHour(at = new Date()) {
 const inWindow = (at = new Date()) => { const h = etHour(at); return h >= 8 && h < 21; };
 
 module.exports = {
-  F2, TAG, AMT_LOC_TAG, AMT_BRAND, ATOB_BRAND, GROUP_TAG,
+  MAX_CHILDREN, F2, TAG, AMT_LOC_TAG, AMT_BRAND, ATOB_BRAND, GROUP_TAG,
   ageYears, classroomFor, ageTag, sameChild, nearChild, fieldOf, parseChildren, mergeChildren,
   familyTags, staleStateTags, brandForLoc, triggerForBrand, etHour, inWindow,
 };
