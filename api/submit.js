@@ -451,7 +451,9 @@ async function handler(req, res) {
   });
   if (!note.ok) console.error('GHL note failed', note.status, JSON.stringify(note.data));
 
-  await notifyEmail(b, locLabel, loc.name);
+  // example.com is reserved (RFC 2606) — never a real parent; it is what the health
+  // check submits, so it must not email staff a fake new family every run.
+  if (!/@example\.com$/i.test(b.parentEmail)) await notifyEmail(b, locLabel, loc.name);
 
   // ── 6. Confirmation text (never fails the submission) ────────────────────────
   let confirm = 'skipped';
