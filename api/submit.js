@@ -108,6 +108,9 @@ function summaryText(b, locLabel) {
     '  Phone: ' + b.emergencyPhone,
     '  Relationship: ' + b.emergencyRelationship,
   ];
+  if (b.shirtSize || b.pantsSize) {
+    lines.push('', 'UNIFORM SIZES', '  Shirt: ' + (b.shirtSize || '—'), '  Pants: ' + (b.pantsSize || '—'));
+  }
   const people = Array.isArray(b.people) ? b.people : [];
   if (people.length) {
     lines.push('', 'OTHER AUTHORIZED PEOPLE');
@@ -198,6 +201,11 @@ function intakeHtml(b, locLabel, brandName) {
               ${row('Phone', `<a href="tel:${escapeHtml(b.emergencyPhone)}" style="color:#5B2C8E;text-decoration:none;">${escapeHtml(b.emergencyPhone)}</a>`)}
               ${row('Relationship', escapeHtml(b.emergencyRelationship))}
             </table>
+            ${(b.shirtSize || b.pantsSize) ? heading('Uniform Sizes') + `
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;">
+              ${row('Shirt', escapeHtml(b.shirtSize || '—'))}
+              ${row('Pants', escapeHtml(b.pantsSize || '—'))}
+            </table>` : ''}
             ${peopleRows ? heading('Other Authorized People') + `
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;">${peopleRows}</table>` : ''}
             ${b.notes ? `
