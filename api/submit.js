@@ -451,9 +451,12 @@ async function handler(req, res) {
   });
   if (!note.ok) console.error('GHL note failed', note.status, JSON.stringify(note.data));
 
-  // example.com is reserved (RFC 2606) — never a real parent; it is what the health
-  // check submits, so it must not email staff a fake new family every run.
-  if (!/@example\.com$/i.test(b.parentEmail)) await notifyEmail(b, locLabel, loc.name);
+  // The health check submits with a reserved example.com email AND a fictional
+  // 555-01xx number (never assigned to anyone). Only that pair skips the staff email:
+  // a real family's phone with a fake email must still alert staff, or the form
+  // could be used to edit a family silently.
+  const isHealthCheck = /@example\.com$/i.test(b.parentEmail) && /^\+1\d{3}55501\d{2}$/.test(toE164(b.parentPhone));
+  if (!isHealthCheck) await notifyEmail(b, locLabel, loc.name);
 
   // ── 6. Confirmation text (never fails the submission) ────────────────────────
   let confirm = 'skipped';
