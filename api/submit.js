@@ -309,7 +309,7 @@ async function handler(req, res) {
   if (b.company) return res.status(200).json({ ok: true });
 
   const required = {
-    studentName: b.studentName, location: b.location,
+    studentName: b.studentName, studentDob: b.studentDob, location: b.location,
     parentName: b.parentName, parentPhone: b.parentPhone, parentEmail: b.parentEmail,
     emergencyName: b.emergencyName, emergencyPhone: b.emergencyPhone, emergencyRelationship: b.emergencyRelationship,
   };
@@ -317,6 +317,11 @@ async function handler(req, res) {
     if (!v || !String(v).trim()) return res.status(400).send(`Missing required field: ${k}`);
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.parentEmail)) return res.status(400).send('Invalid email address');
+  // The dashboard enrolls a child only with a real birth date (it feeds the login + classroom).
+  const dobAge = ageYears('', b.studentDob);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(b.studentDob) || isNaN(dobAge) || dobAge > 18) {
+    return res.status(400).send('Please enter your child\'s date of birth.');
+  }
   if (b.smsConsent !== 'yes') return res.status(400).send('SMS consent is required');
   // Every free-text field is bounded before any processing: this endpoint is
   // public, and names go through matching loops in _family.js.
