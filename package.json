@@ -1,0 +1,8 @@
+{
+  "name": "daycare-fillout-form",
+  "private": true,
+  "description": "Family Contact Form -> GHL + staff email + stored PDF. Only dependency: @vercel/blob (private PDF store).",
+  "dependencies": {
+    "@vercel/blob": "^2.8.1"
+  }
+}

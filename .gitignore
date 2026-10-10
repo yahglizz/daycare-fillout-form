@@ -5,3 +5,5 @@
 agentdb.rvf
 agentdb.rvf.lock
 ruvector.db
+.env*
+node_modules/

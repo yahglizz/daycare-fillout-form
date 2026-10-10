@@ -27,4 +27,17 @@ GHL contact (no sales opportunity — these are current students, not leads).
 | `RESEND_API_KEY` | *(optional)* Resend key, required only if `NOTIFY_EMAIL` set | yes |
 | `RESEND_FROM` | *(optional)* verified sender | no |
 
+| `BLOB_READ_WRITE_TOKEN` | auto-added by connecting the private Blob store `atob-family-forms` | yes |
+| `FAMILY_FORMS_READ_KEY` | bearer key for `/api/family-forms`; same value as `FAMILY_FORMS_READ_KEY` in the dashboard's `daycare.env` | **yes** |
+| `FAMILY_PDF_ENABLED` | *(optional)* set `false` to stop rendering/storing PDFs (email + GHL unaffected) | no |
+
 Email notification is **OFF** unless both `RESEND_API_KEY` and `NOTIFY_EMAIL` are set.
+
+## Stored PDF copy (added 2026-10-09)
+Every real submission (not the 555-01xx + example.com health-check pair) is rendered to a PDF by
+`api/_pdf.js` (no dependencies), attached to the staff email, and written to the **private** Blob store as
+`family-forms/<atob|amt>/<YYYY-MM>/<UTC stamp>__<contactId>__<child>__<parent>.pdf`. One file per submission,
+never overwritten, kept indefinitely (no delete code). `api/family-forms.js` is the bearer-key read endpoint
+the FORGE REI OS dashboard uses (Daycare -> Family Forms). A Blob outage costs only the dashboard copy;
+the email and GHL note still go out. ATOB and A Mother's Touch are separate folders and separate letterheads.
+Tests: `node --test test/pdf.test.js test/family.test.js`.

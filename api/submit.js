@@ -6,8 +6,9 @@
 const GHL_BASE = 'https://services.leadconnectorhq.com';
 const {
   F2, TAG, ageYears, ageConflict, classroomFor, fieldOf, parseChildren, mergeChildren,
-  familyTags, staleStateTags, brandForLoc, triggerForBrand, inWindow,
+  familyTags, staleStateTags, brandForLoc, triggerForBrand, inWindow, AMT_BRAND,
 } = require('./_family');
+const { renderFamilyPdf, pdfPath, slug } = require('./_pdf');
 
 // Custom-field ids for location 4JIvZEmkY5EjTsDRnjBN (plain identifiers, not secrets).
 const F = {
@@ -139,7 +140,7 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-function intakeHtml(b, locLabel, brandName) {
+function intakeHtml(b, locLabel, brandName, hasPdf) {
   const submittedAt = new Date().toLocaleString('en-US', {
     timeZone: 'America/New_York', dateStyle: 'full', timeStyle: 'short',
   });
@@ -205,7 +206,7 @@ function intakeHtml(b, locLabel, brandName) {
               </div>` : ''}
             <div style="margin-top:28px;padding-top:20px;border-top:1px solid #EDE4F5;text-align:center;color:#7D7592;font-size:12px;">
               Submitted ${escapeHtml(submittedAt)} ET<br>
-              Reply directly to this email to contact ${escapeHtml(b.parentName)}.
+              Reply directly to this email to contact ${escapeHtml(b.parentName)}.${hasPdf ? '<br>A PDF copy is attached and saved in the dashboard under Daycare &rarr; Family Forms.' : ''}
             </div>
           </td></tr>
         </table>
@@ -215,8 +216,32 @@ function intakeHtml(b, locLabel, brandName) {
 </html>`;
 }
 
+// Render the intake as a PDF and keep it in the private Blob store the dashboard
+// reads. Never throws: the staff email and the GHL note are the safety net, so a
+// Blob outage costs the dashboard copy, not the submission. Kill switch:
+// FAMILY_PDF_ENABLED=false.
+async function buildAndStorePdf(b, loc, locLabel, contactId) {
+  if (process.env.FAMILY_PDF_ENABLED === 'false') return null;
+  try {
+    const at = new Date();
+    const brandKey = brandForLoc(loc.tag) === AMT_BRAND ? 'amt' : 'atob';
+    const buf = renderFamilyPdf(b, { brandName: loc.name, locLabel, at, ref: contactId });
+    const path = pdfPath({ brandKey, at, contactId, child: b.studentName, parent: b.parentName });
+    const day = at.toISOString().slice(0, 10);
+    const filename = `${brandKey.toUpperCase()}-Family-Form_${slug(b.studentName)}_${day}.pdf`;
+    try {
+      const { put } = require('@vercel/blob');
+      await put(path, buf, { access: 'private', contentType: 'application/pdf', addRandomSuffix: false });
+    } catch (err) { console.error('[pdf] store failed', err && err.message); }
+    return { buf, path, filename };
+  } catch (err) {
+    console.error('[pdf] render failed', err && err.message);
+    return null;
+  }
+}
+
 // Optional email notification (OFF unless RESEND_API_KEY + NOTIFY_EMAIL are set).
-async function notifyEmail(b, locLabel, brandName) {
+async function notifyEmail(b, locLabel, brandName, pdf) {
   const key = process.env.RESEND_API_KEY;
   const to = process.env.NOTIFY_EMAIL; // comma-separated ok
   if (!key || !to) return;
@@ -230,7 +255,8 @@ async function notifyEmail(b, locLabel, brandName) {
         to: to.split(',').map((s) => s.trim()).filter(Boolean),
         reply_to: b.parentEmail,
         subject: `Family Contact Form — ${b.studentName} (${locLabel})`,
-        html: intakeHtml(b, locLabel, brandName || 'A Touch of Blessings'),
+        html: intakeHtml(b, locLabel, brandName || 'A Touch of Blessings', !!pdf),
+        ...(pdf ? { attachments: [{ filename: pdf.filename, content: pdf.buf.toString('base64') }] } : {}),
         // Plain-text alternative kept: some clients and every screen reader use it.
         text: summaryText(b, locLabel),
       }),
@@ -461,7 +487,10 @@ async function handler(req, res) {
   // a real family's phone with a fake email must still alert staff, or the form
   // could be used to edit a family silently.
   const isHealthCheck = /@example\.com$/i.test(b.parentEmail) && /^\+1\d{3}55501\d{2}$/.test(toE164(b.parentPhone));
-  if (!isHealthCheck) await notifyEmail(b, locLabel, loc.name);
+  if (!isHealthCheck) {
+    const pdf = await buildAndStorePdf(b, loc, locLabel, contactId);
+    await notifyEmail(b, locLabel, loc.name, pdf);
+  }
 
   // ── 6. Confirmation text (never fails the submission) ────────────────────────
   let confirm = 'skipped';
