@@ -65,3 +65,19 @@ test('parsePath rejects anything that is not exactly what submit.js writes', () 
     'family-forms/atob/2026-10/20261009T183205Z__a__b__c.pdf/../../x', 'other/atob/2026-10/20261009T183205Z__a__b__c.pdf'])
     assert.equal(parsePath(bad), null, String(bad));
 });
+
+test('source line appears only when asked for (backfilled PDFs say where they came from)', () => {
+  const plain = render().toString('latin1');
+  const restored = renderFamilyPdf(base, { brandName: 'A Touch of Blessings', locLabel: 'x', at: AT, ref: 'abc', source: 'Rebuilt from the CRM intake note' }).toString('latin1');
+  assert.ok(!plain.includes('Source'));
+  assert.ok(restored.includes('Rebuilt from the CRM intake note'));
+});
+
+test('smart quotes and em dashes in BODY text survive (enc runs twice: wrap then text)', () => {
+  const buf = renderFamilyPdf({ ...base, studentName: 'Lani\u2019Ali Grice', emergencyName: 'Nicole O\u2019Neil', notes: 'Pick up \u2014 not Fri\u2026' },
+    { brandName: "A Mother\u2019s Touch Inc.", locLabel: "A Mother\u2019s Touch Inc. \u2014 1923 Cecil B. Moore Ave.", at: AT, ref: 'r' });
+  const shown = [...buf.toString('latin1').matchAll(/\((.*?)\) Tj/g)].map((m) => m[1]).join('\n');
+  assert.ok(!shown.includes('?'), 'no replacement characters in any drawn text');
+  assert.ok(shown.includes('Lani\x92Ali Grice') && shown.includes('Inc. \x97 1923') && shown.includes('Fri\x85'));
+  assert.equal(enc(enc('\u2014\u2019\u201c')), '\x97\x92\x93', 'enc is idempotent');
+});

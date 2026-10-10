@@ -34,6 +34,7 @@ const WIN = {
   '–': '\x96', '—': '\x97', '…': '\x85', '•': '\x95',
   ' ': ' ', ' ': ' ', ' ': ' ',
 };
+const WIN_BYTES = new Set(Object.values(WIN)); // enc() runs twice (wrap, then text): its own output must pass through
 const WIDE = { '\x85': 1000, '\x91': 222, '\x92': 222, '\x93': 333, '\x94': 333, '\x95': 350, '\x96': 556, '\x97': 1000 };
 
 // Any string -> a Latin-1 string safe to drop into a PDF literal. Newlines survive
@@ -46,7 +47,7 @@ function enc(s) {
     else if (c === 13) continue;
     else if (c < 32 || c === 127) out += ' ';
     else if (c <= 126 || (c >= 161 && c <= 255)) out += ch;
-    else out += WIN[ch] || '?';
+    else out += WIN_BYTES.has(ch) ? ch : (WIN[ch] || '?');
   }
   return out;
 }
@@ -86,7 +87,7 @@ const etDate = (d) => enc(d.toLocaleString('en-US', {
   timeZone: 'America/New_York', dateStyle: 'full', timeStyle: 'short',
 }));
 
-// b = the validated form body from submit.js. opts: { brandName, locLabel, at, ref }.
+// b = the validated form body from submit.js. opts: { brandName, locLabel, at, ref, source? }.
 function renderFamilyPdf(b, opts) {
   const { brandName, locLabel, at, ref } = opts;
   const pages = [];
@@ -139,6 +140,7 @@ function renderFamilyPdf(b, opts) {
   y -= LEAD + 4;
   row('Location', locLabel);
   if (ref) row('Reference', ref);
+  if (opts.source) row('Source', opts.source); // backfill: says the PDF was rebuilt from the CRM note
 
   heading('Child');
   row('Name', b.studentName);
