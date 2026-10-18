@@ -99,6 +99,32 @@ test('bounded: huge names and big families never loop unbounded', () => {
   assert.equal(f.mergeChildren(kids, { name: 'New Lopez' }).review, true);
 });
 
+test('entity tag: 1923 = AMT, 921/2318 = ATOB, unknown or split = none', () => {
+  assert.equal(f.entityTag('loc-1923-cecil-b-moore'), 'entity-amt');
+  assert.equal(f.entityTag(['loc-921-n-18th']), 'entity-atob');
+  assert.equal(f.entityTag(['loc-921-n-18th', 'loc-2318-cecil-b-moore']), 'entity-atob', 'two ATOB centres are still one entity');
+  assert.equal(f.entityTag(['loc-921-n-18th', 'loc-1923-cecil-b-moore']), '', 'split across entities: never guess');
+  assert.equal(f.entityTag(['loc-unknown']), '');
+  assert.equal(f.entityTag([]), '');
+  assert.equal(f.entityTag(undefined), '');
+  const amt = f.familyTags([{ name: 'A', dob: '2022-01-01', loc: 'loc-1923-cecil-b-moore' }], {});
+  assert.ok(amt.includes('entity-amt')); assert.ok(!amt.includes('entity-atob'));
+  const split = f.familyTags([{ name: 'A', loc: 'loc-921-n-18th' }, { name: 'B', loc: 'loc-1923-cecil-b-moore' }], {});
+  assert.ok(!split.some((t) => t.startsWith('entity-')));
+  const unknown = f.familyTags([{ name: 'A', dob: '2022-01-01', loc: 'loc-unknown' }], {});
+  assert.ok(!unknown.some((t) => t.startsWith('entity-')));
+});
+
+test('entity tag is current state: moving AMT -> ATOB drops entity-amt, history tags stay', () => {
+  const next = f.familyTags([{ name: 'A', dob: '2022-01-01', loc: 'loc-921-n-18th' }], {});
+  assert.ok(next.includes('entity-atob'));
+  assert.deepEqual(
+    f.staleStateTags(['entity-amt', 'loc-1923-cecil-b-moore', 'website-lead', 'start-date-proposed', 'startmo-2026-11'], next),
+    ['entity-amt', 'loc-1923-cecil-b-moore'],
+  );
+  assert.deepEqual(f.staleStateTags(['entity-atob', 'loc-921-n-18th'], next), [], 'unchanged entity is kept');
+});
+
 test('DOB vs typed age conflict → child-age-review, no age tag', () => {
   const now = new Date('2026-10-05T12:00:00Z');
   assert.ok(f.ageConflict({ dob: '2026-08-09', age: '3' }, now));

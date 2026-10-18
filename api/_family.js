@@ -76,6 +76,21 @@ function ageTag(years) {
   return years < 1 ? 'age-infant' : `age-${years}`;
 }
 
+// Legal entity per centre tag. 1923 is A Mother's Touch Inc., a SEPARATE legal
+// entity; 921 and 2318 are A Touch of Blessings. Kept identical to the copy in
+// website/api/enroll.js (the two repos cannot share code) — edit both together.
+const ENTITY_TAG = {
+  'loc-921-n-18th': 'entity-atob',
+  'loc-2318-cecil-b-moore': 'entity-atob',
+  'loc-1923-cecil-b-moore': 'entity-amt',
+};
+// Exactly one entity tag, or '' when no centre is known or the centres span both
+// entities. Never a guess.
+function entityTag(locTags) {
+  const found = new Set([].concat(locTags || []).map((t) => ENTITY_TAG[String(t).toLowerCase()]).filter(Boolean));
+  return found.size === 1 ? [...found][0] : '';
+}
+
 // Lowercase, accents stripped, letters (any script) + spaces only. Hyphens become
 // spaces so "Rollins-Richardson" and "Rollins Richardson" read the same.
 const norm = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
@@ -192,6 +207,10 @@ function familyTags(children, b) {
     else { const at = ageTag(ageYears(c.age, c.dob)); if (at) tags.add(at); }
     if (c.shirt || c.pants) tags.add('has-uniform-sizes');
   }
+  // One legal entity for the family, from every child's centre. Children split
+  // across ATOB and AMT (or no known centre) get none: staff decide, not the form.
+  const entity = entityTag(children.map((c) => c.loc));
+  if (entity) tags.add(entity);
   if (children.length > 1) tags.add('multi-child');
   if (b.smsConsent === 'yes') tags.add('sms-consent');
   if (Array.isArray(b.people) && b.people.some((p) => p && (p.name || p.phone))) tags.add('has-authorized-people');
@@ -199,7 +218,8 @@ function familyTags(children, b) {
 }
 
 // Current-state tag families: a value no longer computed for ANY child is removed.
-const STATE_PREFIXES = ['loc-', 'group-', 'age-'];
+// entity- included so a family that moves between ATOB and AMT loses the old one.
+const STATE_PREFIXES = ['loc-', 'group-', 'age-', 'entity-'];
 function staleStateTags(existing, next) {
   const want = new Set(next);
   return (existing || []).map(String).filter((t) => !want.has(t)
@@ -223,6 +243,6 @@ const inWindow = (at = new Date()) => { const h = etHour(at); return h >= 8 && h
 
 module.exports = {
   MAX_CHILDREN, F2, TAG, AMT_LOC_TAG, AMT_BRAND, ATOB_BRAND, GROUP_TAG,
-  ageYears, ageConflict, classroomFor, ageTag, sameChild, nearChild, fieldOf, parseChildren, mergeChildren,
+  ageYears, ageConflict, classroomFor, ageTag, entityTag, sameChild, nearChild, fieldOf, parseChildren, mergeChildren,
   familyTags, staleStateTags, brandForLoc, triggerForBrand, etHour, inWindow,
 };
