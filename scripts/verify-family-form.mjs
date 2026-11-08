@@ -9,8 +9,8 @@
 //   2. a submission creates exactly ONE contact with every tag + field
 //   3. a sibling submission is appended to the SAME contact, child 1 untouched
 //   4. the public response leaks nothing; a bad phone is refused
-//   5. the confirmation is armed / queued / blocked exactly as the kill switch + clock say
-//   6. the 8am release endpoint is locked (401) and its dry run answers
+//   5. the confirmation is armed / blocked exactly as the kill switch + clock say
+//   6. the retired 8am release endpoint is gone (404)
 //   7. (DASH set) the dashboard shows one card per child for that family
 // Then deletes the test contact. Credentials: GHL_PIT_TOKEN + GHL_LOCATION_ID, else read from
 // ~/forge rei dash/forge-daycare/config/daycare.env. CRON_SECRET optional (dry-run check).
@@ -71,12 +71,12 @@ try {
   ok(field(c, f.F2.shirtSize) === '4T' && field(c, f.F2.pantsSize) === '5T', 'uniform sizes saved');
   ok(JSON.parse(field(c, f.F2.childrenJson) || '[]').length === 1, 'children_json has 1 child');
 
-  // Confirmation state must match the kill switch + clock: marker present only if armed/queued.
+  // Confirmation state must match the kill switch + clock: marker present only if armed.
   const marker = field(c, f.F2.confirmSent);
   const tags = c.tags || [];
-  const armedOrQueued = tags.includes('family-confirm-trigger') || tags.includes('family-confirm-queued') || tags.includes('family-confirm-pending');
-  ok(Boolean(marker) === armedOrQueued, `confirm state consistent (marker ${marker ? 'set' : 'none'}, ${armedOrQueued ? 'armed/queued' : 'not armed'})`);
-  console.log(`INFO  confirmation ${armedOrQueued ? (tags.includes('family-confirm-queued') ? 'QUEUED for 8am' : 'ARMED (text sends in ~3 min)') : 'NOT armed (kill switch off or blocked)'}`);
+  const armedOrQueued = tags.includes('family-confirm-trigger') || tags.includes('family-confirm-pending');
+  ok(Boolean(marker) === armedOrQueued, `confirm state consistent (marker ${marker ? 'set' : 'none'}, ${armedOrQueued ? 'armed' : 'not armed'})`);
+  console.log(`INFO  confirmation ${armedOrQueued ? 'ARMED (text sends in ~3 min, any hour)' : 'NOT armed (kill switch off or blocked)'}`);
 
   const r2 = await post({ ...base, studentName: `Zztest Sib${run}`, location: 'amt-1923', studentDob: '2024-02-02' });
   ok(r2.status === 200, 'sibling submit 200');
@@ -88,12 +88,8 @@ try {
   const again = await ghl(`/contacts/search/duplicate?locationId=${LOC}&number=${encodeURIComponent('+1' + phone)}`);
   ok(again.data?.contact?.id === contactId, 'still one contact for this phone');
 
-  const lock = await fetch(`${SITE}/api/flush-confirm-queue`);
-  ok(lock.status === 401, '8am release endpoint locked without the secret');
-  if (process.env.CRON_SECRET) {
-    const dry = await fetch(`${SITE}/api/flush-confirm-queue?dry=1`, { headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` } });
-    ok(dry.status === 200, `release dry run answers (${JSON.stringify(await dry.json()).slice(0, 120)})`);
-  }
+  const gone = await fetch(`${SITE}/api/flush-confirm-queue`);
+  ok(gone.status === 404, `old 8am release endpoint is gone (${gone.status})`);
 
   if (DASH) {
     // GHL's contact LIST lags writes (measured 8s on 2026-10-05, 21s on 2026-10-06): poll.

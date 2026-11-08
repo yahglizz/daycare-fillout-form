@@ -61,10 +61,9 @@ test('brand split: only 1923 is A Mother\'s Touch', () => {
   assert.equal(f.triggerForBrand(f.brandForLoc('loc-921-n-18th')), 'family-confirm-trigger');
 });
 
-test('send window is Philadelphia 8am–9pm', () => {
-  assert.ok(f.inWindow(new Date('2026-10-05T12:00:00Z')));   // 8am EDT
-  assert.ok(!f.inWindow(new Date('2026-10-05T11:59:00Z')));  // 7:59am
-  assert.ok(!f.inWindow(new Date('2026-10-06T01:00:00Z')));  // 9pm
+test('no send window: queue helpers are gone', () => {
+  assert.equal(f.inWindow, undefined);
+  assert.equal(f.TAG.queued, undefined);
 });
 
 test('reviewer cases: hyphens, middle names, initials, typos, ages', () => {

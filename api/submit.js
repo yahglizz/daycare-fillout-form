@@ -6,7 +6,7 @@
 const GHL_BASE = 'https://services.leadconnectorhq.com';
 const {
   F2, TAG, ageYears, ageConflict, classroomFor, fieldOf, parseChildren, mergeChildren,
-  familyTags, staleStateTags, brandForLoc, triggerForBrand, inWindow, AMT_BRAND,
+  familyTags, staleStateTags, brandForLoc, triggerForBrand, AMT_BRAND,
 } = require('./_family');
 const { renderFamilyPdf, pdfPath, slug } = require('./_pdf');
 
@@ -307,9 +307,8 @@ async function armConfirmation(contactId, contact, b, brand, token, children = [
     customFields: [{ id: F2.parentFirst, value: parentFirst }, { id: F2.smsBrand, value: brand }],
   });
   if (!fr.ok) { console.error('[confirm] field write failed — NOT arming', fr.status, JSON.stringify(fr.data)); return 'field-write-failed'; }
-  // The workflow waits 3 minutes, so judge the window at the moment it sends.
-  const queued = !inWindow(new Date(Date.now() + 3 * 60 * 1000));
-  const tag = queued ? TAG.queued : triggerForBrand(brand);
+  // No send window (owner decision 2026-11-07): the text goes out ~3 min after the form, any hour.
+  const tag = triggerForBrand(brand);
   const tr = await ghl(`/contacts/${contactId}/tags`, 'POST', token, { tags: [tag, TAG.pending] });
   if (!tr.ok) { console.error('[confirm] trigger tag failed — no text', tr.status, JSON.stringify(tr.data)); return 'tag-failed'; }
   // Marker only once the tag is on, so any earlier failure retries cleanly.
@@ -317,8 +316,8 @@ async function armConfirmation(contactId, contact, b, brand, token, children = [
     customFields: [{ id: F2.confirmSent, value: new Date().toISOString() }],
   });
   if (!mr.ok) console.error('[confirm] MARKER WRITE FAILED — a resubmit could re-text', mr.status, JSON.stringify(mr.data));
-  console.log(`[confirm] ${contactId} ${queued ? 'queued for 8am' : 'armed'} (${tag})`);
-  return queued ? 'queued' : 'armed';
+  console.log(`[confirm] ${contactId} armed (${tag})`);
+  return 'armed';
 }
 
 async function handler(req, res) {

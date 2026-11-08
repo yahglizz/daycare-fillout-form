@@ -1,5 +1,5 @@
 // Pure helpers for the Family Contact Form (no I/O). Shared by submit.js and
-// flush-confirm-queue.js, and unit-tested by test/family.test.js. The leading
+// unit-tested by test/family.test.js. The leading
 // underscore keeps Vercel from deploying this file as its own function.
 
 // Custom-field ids created 2026-10-05 for the confirmation flow + uniforms.
@@ -10,12 +10,11 @@ const F2 = {
   confirmedAt: 'T4h8YJeha9uvQE5MgBNf',   // written by the dashboard poller on a YES
   childrenJson: 'e7YOKwZiHYM5lUnehTGE',  // [{name,dob,age,group,loc,shirt,pants,updatedAt}]
   parentFirst: 'N3T1MeOASolGi2rJbqb6',   // contact.parent_first_name — the workflow greets with it
-  smsBrand: 'Tj4Q7LUwMM2QbmSfG1Ud',      // contact.sms_brand — routes a queued text to the right entity
+  smsBrand: 'Tj4Q7LUwMM2QbmSfG1Ud',      // contact.sms_brand — routes the confirmation text to the right entity
 };
 
 const TAG = {
   pending: 'family-confirm-pending',
-  queued: 'family-confirm-queued',
   trigger: 'family-confirm-trigger',
   triggerAmt: 'family-confirm-trigger-amt',
   confirmed: 'family-confirmed',
@@ -234,15 +233,8 @@ function triggerForBrand(brand) {
   return brand === AMT_BRAND ? TAG.triggerAmt : TAG.trigger;
 }
 
-// Hour in Philadelphia. The GHL location's clock is America/Cancun, so the send
-// window is enforced here, never in the workflow.
-function etHour(at = new Date()) {
-  return Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false }).format(at)) % 24;
-}
-const inWindow = (at = new Date()) => { const h = etHour(at); return h >= 8 && h < 21; };
-
 module.exports = {
   MAX_CHILDREN, F2, TAG, AMT_LOC_TAG, AMT_BRAND, ATOB_BRAND, GROUP_TAG,
   ageYears, ageConflict, classroomFor, ageTag, entityTag, sameChild, nearChild, fieldOf, parseChildren, mergeChildren,
-  familyTags, staleStateTags, brandForLoc, triggerForBrand, etHour, inWindow,
+  familyTags, staleStateTags, brandForLoc, triggerForBrand,
 };

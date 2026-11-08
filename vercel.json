@@ -23,15 +23,5 @@
         }
       ]
     }
-  ],
-  "crons": [
-    {
-      "path": "/api/flush-confirm-queue",
-      "schedule": "0 12 * * *"
-    },
-    {
-      "path": "/api/flush-confirm-queue",
-      "schedule": "0 13 * * *"
-    }
   ]
 }
